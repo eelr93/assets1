@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="azul_ingreso">#1E88E5</color>
+    <color name="verde_ahorro">#2E7D32</color>
+    <color name="rojo_gasto">#C62828</color>
+    <color name="fondo_claro">#FBFDF9</color>
+    <color name="fondo_oscuro">#101410</color>
+</resources>
