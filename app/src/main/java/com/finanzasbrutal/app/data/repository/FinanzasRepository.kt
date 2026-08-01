@@ -14,6 +14,7 @@ import com.finanzasbrutal.app.data.local.entity.Ingreso
 import com.finanzasbrutal.app.data.local.entity.TipoIngreso
 import com.finanzasbrutal.app.util.DateUtils
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -37,6 +38,10 @@ class FinanzasRepository(
 
     fun observarConfiguracion(): Flow<Configuracion> =
         configuracionDao.observar().map { it ?: ConfiguracionPorDefecto.crear() }
+
+    fun observarSaldoActual(): Flow<Double> = combine(observarIngresos(), observarGastos()) { ingresos, gastos ->
+        ingresos.sumOf { it.monto } - gastos.sumOf { it.monto }
+    }
 
     // ---------- Escritura ----------
 

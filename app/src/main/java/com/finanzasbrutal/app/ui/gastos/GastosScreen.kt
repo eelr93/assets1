@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -29,6 +31,7 @@ import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
@@ -40,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -57,6 +61,7 @@ import com.finanzasbrutal.app.ui.components.DialogoEditarGastoFijo
 import com.finanzasbrutal.app.ui.components.EstadoVacio
 import com.finanzasbrutal.app.ui.components.FilaGastoFijo
 import com.finanzasbrutal.app.ui.theme.RojoGasto
+import com.finanzasbrutal.app.ui.theme.VerdeAhorro
 import com.finanzasbrutal.app.ui.theme.colorDeCategoria
 import com.finanzasbrutal.app.util.CurrencyUtils
 import java.time.LocalDate
@@ -95,13 +100,18 @@ fun GastosScreen(repository: FinanzasRepository) {
                     onClick = { pestaniaSeleccionada = 1 },
                     text = { Text("Variables") }
                 )
+                Tab(
+                    selected = pestaniaSeleccionada == 2,
+                    onClick = { pestaniaSeleccionada = 2 },
+                    text = { Text("Lista rápida") }
+                )
             }
             Spacer(Modifier.height(12.dp))
 
-            if (pestaniaSeleccionada == 0) {
-                PanelGastosFijos(viewModel)
-            } else {
-                PanelGastosVariables(viewModel)
+            when (pestaniaSeleccionada) {
+                0 -> PanelGastosFijos(viewModel)
+                1 -> PanelGastosVariables(viewModel)
+                else -> PanelListaCompras(viewModel)
             }
         }
     }
@@ -213,6 +223,142 @@ private fun FilaGastoVariable(gasto: Gasto, onEliminar: () -> Unit) {
             )
             IconButton(onClick = onEliminar) {
                 Icon(Icons.Filled.Delete, contentDescription = "Eliminar gasto")
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PanelListaCompras(viewModel: GastosViewModel) {
+    val saldo by viewModel.saldoActual.collectAsStateWithLifecycle()
+    val productos by viewModel.itemsListaCompras.collectAsStateWithLifecycle()
+
+    var capitalTexto by rememberSaveable { mutableStateOf<String?>(null) }
+    var nombreProducto by remember { mutableStateOf("") }
+    var precioProducto by remember { mutableStateOf("") }
+    var categoria by remember { mutableStateOf(CategoriaGasto.COMIDA) }
+    var menuAbierto by remember { mutableStateOf(false) }
+
+    val capital = capitalTexto?.let { CurrencyUtils.aMontoOrNull(it) } ?: saldo
+    val gastado = productos.sumOf { it.precio }
+    val disponible = capital - gastado
+    val precioValido = (CurrencyUtils.aMontoOrNull(precioProducto) ?: 0.0) > 0.0
+
+    Column(Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = capitalTexto ?: capital.toInt().toString(),
+            onValueChange = { capitalTexto = it },
+            label = { Text("Capital disponible (ARS)") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "Por defecto es tu saldo actual (${CurrencyUtils.formatear(saldo)}); podés cambiarlo si llevás menos plata.",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.height(16.dp))
+
+        ExposedDropdownMenuBox(expanded = menuAbierto, onExpandedChange = { menuAbierto = it }) {
+            OutlinedTextField(
+                value = categoria.etiqueta,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Categoría") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
+                modifier = Modifier.menuAnchor().fillMaxWidth()
+            )
+            ExposedDropdownMenu(expanded = menuAbierto, onDismissRequest = { menuAbierto = false }) {
+                CategoriaGasto.entries.forEach { opcion ->
+                    DropdownMenuItem(
+                        text = { Text(opcion.etiqueta) },
+                        onClick = {
+                            categoria = opcion
+                            menuAbierto = false
+                        }
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = nombreProducto,
+                onValueChange = { nombreProducto = it },
+                label = { Text("Producto") },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+            OutlinedTextField(
+                value = precioProducto,
+                onValueChange = { precioProducto = it },
+                label = { Text("Precio") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                modifier = Modifier.weight(1f)
+            )
+        }
+        Spacer(Modifier.height(8.dp))
+        Button(
+            enabled = precioValido,
+            onClick = {
+                viewModel.agregarItemLista(
+                    nombreProducto.ifBlank { "Producto" },
+                    CurrencyUtils.aMontoOrNull(precioProducto) ?: 0.0
+                )
+                nombreProducto = ""
+                precioProducto = ""
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Filled.Add, contentDescription = null)
+            Spacer(Modifier.width(6.dp))
+            Text("Agregar a la lista")
+        }
+        Spacer(Modifier.height(16.dp))
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("Gastado: ${CurrencyUtils.formatear(gastado)}", color = RojoGasto, fontWeight = FontWeight.Bold)
+            Text(
+                "Disponible: ${CurrencyUtils.formatear(disponible)}",
+                color = if (disponible >= 0) VerdeAhorro else RojoGasto,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+
+        if (productos.isEmpty()) {
+            EstadoVacio("Todavía no agregaste productos")
+        } else {
+            LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                items(productos, key = { it.id }) { item ->
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(item.nombre, modifier = Modifier.weight(1f))
+                        Text(CurrencyUtils.formatear(item.precio))
+                        IconButton(onClick = { viewModel.quitarItemLista(item.id) }) {
+                            Icon(Icons.Filled.Delete, contentDescription = "Quitar ${item.nombre}")
+                        }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = { viewModel.cancelarListaCompras() },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Cancelar") }
+                Button(
+                    onClick = { viewModel.confirmarListaCompras(categoria) },
+                    modifier = Modifier.weight(1f)
+                ) { Text("Guardar todo") }
             }
         }
     }

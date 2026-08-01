@@ -13,7 +13,9 @@ data class Configuracion(
     val diaCorteIngreso: Int, // 1=Lunes .. 7=Domingo (java.time.DayOfWeek.value)
     val umbralAlertaPorcentaje: Double,
     val notificacionesActivas: Boolean,
-    val ultimoIngresoAutoGenerado: LocalDate? = null
+    val ultimoIngresoAutoGenerado: LocalDate? = null,
+    val bloqueoActivo: Boolean = false,
+    val pinHash: String? = null
 )
 
 object ConfiguracionPorDefecto {

@@ -16,7 +16,7 @@ import com.finanzasbrutal.app.data.local.entity.Ingreso
 
 @Database(
     entities = [Ingreso::class, Gasto::class, GastoFijo::class, Configuracion::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -37,7 +37,10 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "finanzas_brutal.db"
-                ).build().also { instancia = it }
+                )
+                    // App todavía no publicada: no hay datos de usuarios reales que migrar.
+                    .fallbackToDestructiveMigration()
+                    .build().also { instancia = it }
             }
     }
 }
