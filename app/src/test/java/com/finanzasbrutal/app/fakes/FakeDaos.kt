@@ -4,10 +4,12 @@ import com.finanzasbrutal.app.data.local.dao.ConfiguracionDao
 import com.finanzasbrutal.app.data.local.dao.GastoDao
 import com.finanzasbrutal.app.data.local.dao.GastoFijoDao
 import com.finanzasbrutal.app.data.local.dao.IngresoDao
+import com.finanzasbrutal.app.data.local.dao.MetaAhorroDao
 import com.finanzasbrutal.app.data.local.entity.Configuracion
 import com.finanzasbrutal.app.data.local.entity.Gasto
 import com.finanzasbrutal.app.data.local.entity.GastoFijo
 import com.finanzasbrutal.app.data.local.entity.Ingreso
+import com.finanzasbrutal.app.data.local.entity.MetaAhorro
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import java.time.LocalDate
@@ -96,4 +98,30 @@ class FakeConfiguracionDao(inicial: Configuracion? = null) : ConfiguracionDao {
     override suspend fun obtener(): Configuracion? = flujo.value
 
     override suspend fun contar(): Int = if (flujo.value == null) 0 else 1
+}
+
+class FakeMetaAhorroDao : MetaAhorroDao {
+    private val items = mutableListOf<MetaAhorro>()
+    private var siguienteId = 1L
+    private val flujo = MutableStateFlow<List<MetaAhorro>>(emptyList())
+
+    override suspend fun insertar(meta: MetaAhorro): Long {
+        val conId = meta.copy(id = siguienteId++)
+        items.add(conId)
+        flujo.value = items.toList()
+        return conId.id
+    }
+
+    override suspend fun actualizar(meta: MetaAhorro) {
+        val indice = items.indexOfFirst { it.id == meta.id }
+        if (indice >= 0) items[indice] = meta
+        flujo.value = items.toList()
+    }
+
+    override suspend fun eliminar(meta: MetaAhorro) {
+        items.removeAll { it.id == meta.id }
+        flujo.value = items.toList()
+    }
+
+    override fun observarTodas(): StateFlow<List<MetaAhorro>> = flujo
 }

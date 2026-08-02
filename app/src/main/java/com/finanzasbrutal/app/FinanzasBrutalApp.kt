@@ -25,7 +25,8 @@ class FinanzasBrutalApp : Application() {
             database.ingresoDao(),
             database.gastoDao(),
             database.gastoFijoDao(),
-            database.configuracionDao()
+            database.configuracionDao(),
+            database.metaAhorroDao()
         )
     }
 

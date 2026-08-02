@@ -102,6 +102,9 @@ fun DashboardScreen(repository: FinanzasRepository) {
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        Spacer(Modifier.height(20.dp))
+
+        SeccionMetasAhorro(repository)
         Spacer(Modifier.height(24.dp))
     }
 }

@@ -4,6 +4,7 @@ import com.finanzasbrutal.app.data.local.dao.ConfiguracionDao
 import com.finanzasbrutal.app.data.local.dao.GastoDao
 import com.finanzasbrutal.app.data.local.dao.GastoFijoDao
 import com.finanzasbrutal.app.data.local.dao.IngresoDao
+import com.finanzasbrutal.app.data.local.dao.MetaAhorroDao
 import com.finanzasbrutal.app.data.local.entity.CategoriaGasto
 import com.finanzasbrutal.app.data.local.entity.Configuracion
 import com.finanzasbrutal.app.data.local.entity.ConfiguracionPorDefecto
@@ -11,6 +12,7 @@ import com.finanzasbrutal.app.data.local.entity.Gasto
 import com.finanzasbrutal.app.data.local.entity.GastoFijo
 import com.finanzasbrutal.app.data.local.entity.GastosFijosPorDefecto
 import com.finanzasbrutal.app.data.local.entity.Ingreso
+import com.finanzasbrutal.app.data.local.entity.MetaAhorro
 import com.finanzasbrutal.app.data.local.entity.TipoIngreso
 import com.finanzasbrutal.app.util.DateUtils
 import kotlinx.coroutines.flow.Flow
@@ -26,7 +28,8 @@ class FinanzasRepository(
     private val ingresoDao: IngresoDao,
     private val gastoDao: GastoDao,
     private val gastoFijoDao: GastoFijoDao,
-    private val configuracionDao: ConfiguracionDao
+    private val configuracionDao: ConfiguracionDao,
+    private val metaAhorroDao: MetaAhorroDao
 ) {
     // ---------- Observación reactiva ----------
 
@@ -69,6 +72,24 @@ class FinanzasRepository(
     suspend fun actualizarGastoFijo(gastoFijo: GastoFijo) = gastoFijoDao.actualizar(gastoFijo)
 
     suspend fun actualizarConfiguracion(configuracion: Configuracion) = configuracionDao.guardar(configuracion)
+
+    fun observarMetasAhorro(): Flow<List<MetaAhorro>> = metaAhorroDao.observarTodas()
+
+    suspend fun agregarMetaAhorro(nombre: String, montoObjetivo: Double) {
+        metaAhorroDao.insertar(MetaAhorro(nombre = nombre, montoObjetivo = montoObjetivo))
+    }
+
+    suspend fun aportarAMeta(meta: MetaAhorro, monto: Double) {
+        val nuevoMontoAportado = meta.montoAportado + monto
+        metaAhorroDao.actualizar(
+            meta.copy(
+                montoAportado = nuevoMontoAportado,
+                completada = nuevoMontoAportado >= meta.montoObjetivo
+            )
+        )
+    }
+
+    suspend fun eliminarMetaAhorro(meta: MetaAhorro) = metaAhorroDao.eliminar(meta)
 
     suspend fun obtenerConfiguracion(): Configuracion =
         configuracionDao.obtener() ?: ConfiguracionPorDefecto.crear()

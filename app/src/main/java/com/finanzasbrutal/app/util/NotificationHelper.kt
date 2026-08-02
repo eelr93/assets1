@@ -1,6 +1,7 @@
 package com.finanzasbrutal.app.util
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
@@ -36,6 +37,7 @@ object NotificationHelper {
         ) == PackageManager.PERMISSION_GRANTED
     }
 
+    @SuppressLint("MissingPermission") // el permiso se valida en tienePermiso() antes de notify()
     fun notificarIngresoSemanal(context: Context, montoTotal: Double) {
         if (!tienePermiso(context)) return
         val notificacion = NotificationCompat.Builder(context, CANAL_ID)
@@ -47,6 +49,7 @@ object NotificationHelper {
         NotificationManagerCompat.from(context).notify(ID_INGRESO, notificacion)
     }
 
+    @SuppressLint("MissingPermission") // el permiso se valida en tienePermiso() antes de notify()
     fun notificarAlertaGastos(context: Context) {
         if (!tienePermiso(context)) return
         val notificacion = NotificationCompat.Builder(context, CANAL_ID)
@@ -58,6 +61,7 @@ object NotificationHelper {
         NotificationManagerCompat.from(context).notify(ID_ALERTA, notificacion)
     }
 
+    @SuppressLint("MissingPermission") // el permiso se valida en tienePermiso() antes de notify()
     fun notificarDeudaPorVencer(context: Context, gastoFijo: GastoFijo) {
         if (!tienePermiso(context)) return
         val restantes = gastoFijo.mesesRestantes() ?: return

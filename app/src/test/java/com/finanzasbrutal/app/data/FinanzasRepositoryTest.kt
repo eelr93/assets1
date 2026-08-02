@@ -8,6 +8,7 @@ import com.finanzasbrutal.app.fakes.FakeConfiguracionDao
 import com.finanzasbrutal.app.fakes.FakeGastoDao
 import com.finanzasbrutal.app.fakes.FakeGastoFijoDao
 import com.finanzasbrutal.app.fakes.FakeIngresoDao
+import com.finanzasbrutal.app.fakes.FakeMetaAhorroDao
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,7 +29,8 @@ class FinanzasRepositoryTest {
             FakeIngresoDao(),
             FakeGastoDao(),
             gastoFijoDao,
-            FakeConfiguracionDao(ConfiguracionPorDefecto.crear())
+            FakeConfiguracionDao(ConfiguracionPorDefecto.crear()),
+            FakeMetaAhorroDao()
         )
     }
 

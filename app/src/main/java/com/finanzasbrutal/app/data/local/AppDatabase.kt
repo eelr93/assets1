@@ -9,14 +9,16 @@ import com.finanzasbrutal.app.data.local.dao.ConfiguracionDao
 import com.finanzasbrutal.app.data.local.dao.GastoDao
 import com.finanzasbrutal.app.data.local.dao.GastoFijoDao
 import com.finanzasbrutal.app.data.local.dao.IngresoDao
+import com.finanzasbrutal.app.data.local.dao.MetaAhorroDao
 import com.finanzasbrutal.app.data.local.entity.Configuracion
 import com.finanzasbrutal.app.data.local.entity.Gasto
 import com.finanzasbrutal.app.data.local.entity.GastoFijo
 import com.finanzasbrutal.app.data.local.entity.Ingreso
+import com.finanzasbrutal.app.data.local.entity.MetaAhorro
 
 @Database(
-    entities = [Ingreso::class, Gasto::class, GastoFijo::class, Configuracion::class],
-    version = 2,
+    entities = [Ingreso::class, Gasto::class, GastoFijo::class, Configuracion::class, MetaAhorro::class],
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -26,6 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun gastoDao(): GastoDao
     abstract fun gastoFijoDao(): GastoFijoDao
     abstract fun configuracionDao(): ConfiguracionDao
+    abstract fun metaAhorroDao(): MetaAhorroDao
 
     companion object {
         @Volatile
