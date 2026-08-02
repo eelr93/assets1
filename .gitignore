@@ -11,3 +11,8 @@ local.properties
 /app/build
 /app/release
 *.hprof
+
+# Firma de release: nunca versionar el keystore ni sus credenciales.
+keystore.properties
+*.jks
+*.keystore
