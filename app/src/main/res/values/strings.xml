@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FinanzasBrutal</string>
+
+    <string name="nav_dashboard">Inicio</string>
+    <string name="nav_ingresos">Ingresos</string>
+    <string name="nav_gastos">Gastos</string>
+    <string name="nav_graficos">Gráficos</string>
+    <string name="nav_configuracion">Ajustes</string>
+
+    <string name="canal_recordatorios_nombre">Recordatorios financieros</string>
+    <string name="canal_recordatorios_desc">Ingreso semanal, alertas de gasto y vencimiento de deuda</string>
+
+    <string name="notif_ingreso_titulo">Ingreso semanal registrado</string>
+    <string name="notif_ingreso_texto">Se acreditaron %1$s a tu saldo</string>
+
+    <string name="notif_alerta_gastos_titulo">Alerta de gastos</string>
+    <string name="notif_alerta_gastos_texto">Tus gastos superaron el 60%% del ingreso mensual</string>
+
+    <string name="notif_deuda_titulo">Deuda por vencer</string>
+    <string name="notif_deuda_texto">%1$s: quedan %2$d cuota(s) por pagar</string>
+</resources>
