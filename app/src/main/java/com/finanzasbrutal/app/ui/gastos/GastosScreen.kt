@@ -21,11 +21,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -60,6 +55,7 @@ import com.finanzasbrutal.app.ui.common.FinanzasViewModelFactory
 import com.finanzasbrutal.app.ui.components.DialogoEditarGastoFijo
 import com.finanzasbrutal.app.ui.components.EstadoVacio
 import com.finanzasbrutal.app.ui.components.FilaGastoFijo
+import com.finanzasbrutal.app.ui.components.SelectorDesplegable
 import com.finanzasbrutal.app.ui.theme.RojoGasto
 import com.finanzasbrutal.app.ui.theme.VerdeAhorro
 import com.finanzasbrutal.app.ui.theme.colorDeCategoria
@@ -228,7 +224,6 @@ private fun FilaGastoVariable(gasto: Gasto, onEliminar: () -> Unit) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PanelListaCompras(viewModel: GastosViewModel) {
     val saldo by viewModel.saldoActual.collectAsStateWithLifecycle()
@@ -238,7 +233,6 @@ private fun PanelListaCompras(viewModel: GastosViewModel) {
     var nombreProducto by remember { mutableStateOf("") }
     var precioProducto by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf(CategoriaGasto.COMIDA) }
-    var menuAbierto by remember { mutableStateOf(false) }
 
     val capital = capitalTexto?.let { CurrencyUtils.aMontoOrNull(it) } ?: saldo
     val gastado = productos.sumOf { it.precio }
@@ -262,27 +256,14 @@ private fun PanelListaCompras(viewModel: GastosViewModel) {
         )
         Spacer(Modifier.height(16.dp))
 
-        ExposedDropdownMenuBox(expanded = menuAbierto, onExpandedChange = { menuAbierto = it }) {
-            OutlinedTextField(
-                value = categoria.etiqueta,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Categoría") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
-                modifier = Modifier.menuAnchor().fillMaxWidth()
-            )
-            ExposedDropdownMenu(expanded = menuAbierto, onDismissRequest = { menuAbierto = false }) {
-                CategoriaGasto.entries.forEach { opcion ->
-                    DropdownMenuItem(
-                        text = { Text(opcion.etiqueta) },
-                        onClick = {
-                            categoria = opcion
-                            menuAbierto = false
-                        }
-                    )
-                }
-            }
-        }
+        SelectorDesplegable(
+            valorSeleccionado = categoria.etiqueta,
+            etiqueta = "Categoría",
+            opciones = CategoriaGasto.entries,
+            etiquetaDe = { it.etiqueta },
+            onSeleccionar = { categoria = it },
+            modifier = Modifier.fillMaxWidth()
+        )
         Spacer(Modifier.height(8.dp))
 
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -364,7 +345,6 @@ private fun PanelListaCompras(viewModel: GastosViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DialogoNuevoGasto(
     onDismiss: () -> Unit,
@@ -373,7 +353,6 @@ private fun DialogoNuevoGasto(
     var monto by remember { mutableStateOf("") }
     var descripcion by remember { mutableStateOf("") }
     var categoria by remember { mutableStateOf(CategoriaGasto.COMIDA) }
-    var menuAbierto by remember { mutableStateOf(false) }
     val montoValido = (CurrencyUtils.aMontoOrNull(monto) ?: 0.0) > 0.0
 
     AlertDialog(
@@ -396,27 +375,14 @@ private fun DialogoNuevoGasto(
                     singleLine = true
                 )
                 Spacer(Modifier.height(8.dp))
-                ExposedDropdownMenuBox(expanded = menuAbierto, onExpandedChange = { menuAbierto = it }) {
-                    OutlinedTextField(
-                        value = categoria.etiqueta,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Categoría") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(expanded = menuAbierto, onDismissRequest = { menuAbierto = false }) {
-                        CategoriaGasto.entries.forEach { opcion ->
-                            DropdownMenuItem(
-                                text = { Text(opcion.etiqueta) },
-                                onClick = {
-                                    categoria = opcion
-                                    menuAbierto = false
-                                }
-                            )
-                        }
-                    }
-                }
+                SelectorDesplegable(
+                    valorSeleccionado = categoria.etiqueta,
+                    etiqueta = "Categoría",
+                    opciones = CategoriaGasto.entries,
+                    etiquetaDe = { it.etiqueta },
+                    onSeleccionar = { categoria = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         },
         confirmButton = {

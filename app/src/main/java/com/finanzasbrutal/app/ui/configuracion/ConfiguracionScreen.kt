@@ -17,11 +17,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenu
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -49,13 +44,13 @@ import com.finanzasbrutal.app.data.repository.FinanzasRepository
 import com.finanzasbrutal.app.ui.common.FinanzasViewModelFactory
 import com.finanzasbrutal.app.ui.components.DialogoEditarGastoFijo
 import com.finanzasbrutal.app.ui.components.FilaGastoFijo
+import com.finanzasbrutal.app.ui.components.SelectorDesplegable
 import com.finanzasbrutal.app.util.CurrencyUtils
 import com.finanzasbrutal.app.util.DateUtils
 import com.finanzasbrutal.app.util.ExportUtils
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfiguracionScreen(repository: FinanzasRepository) {
     val viewModel: ConfiguracionViewModel = viewModel(
@@ -287,31 +282,14 @@ private fun DialogoConfigurarPin(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SelectorDiaCorte(diaSeleccionado: Int, onSeleccionar: (Int) -> Unit) {
-    var menuAbierto by remember { mutableStateOf(false) }
-    val nombreActual = DateUtils.NOMBRES_DIA[diaSeleccionado - 1]
-
-    ExposedDropdownMenuBox(expanded = menuAbierto, onExpandedChange = { menuAbierto = it }) {
-        OutlinedTextField(
-            value = nombreActual,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Día de corte para el ingreso semanal") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = menuAbierto) },
-            modifier = Modifier.menuAnchor().fillMaxWidth()
-        )
-        ExposedDropdownMenu(expanded = menuAbierto, onDismissRequest = { menuAbierto = false }) {
-            DayOfWeek.values().forEach { dia ->
-                DropdownMenuItem(
-                    text = { Text(DateUtils.NOMBRES_DIA[dia.value - 1]) },
-                    onClick = {
-                        onSeleccionar(dia.value)
-                        menuAbierto = false
-                    }
-                )
-            }
-        }
-    }
+    SelectorDesplegable(
+        valorSeleccionado = DateUtils.NOMBRES_DIA[diaSeleccionado - 1],
+        etiqueta = "Día de corte para el ingreso semanal",
+        opciones = DayOfWeek.values().toList(),
+        etiquetaDe = { DateUtils.NOMBRES_DIA[it.value - 1] },
+        onSeleccionar = { onSeleccionar(it.value) },
+        modifier = Modifier.fillMaxWidth()
+    )
 }
