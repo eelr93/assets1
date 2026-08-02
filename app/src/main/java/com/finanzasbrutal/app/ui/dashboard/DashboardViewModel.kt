@@ -27,7 +27,10 @@ data class DashboardUiState(
     val proyeccionAhorroMensual: Double = 0.0,
     val proyeccionAhorroAnual: Double = 0.0,
     val margenDisponible: Double = 0.0,
-    val alertaGastosExcedidos: Boolean = false
+    val alertaGastosExcedidos: Boolean = false,
+    val gastoMesAnterior: Double = 0.0,
+    val ahorroMesActual: Double = 0.0,
+    val ahorroMesAnterior: Double = 0.0
 )
 
 class DashboardViewModel(repository: FinanzasRepository) : ViewModel() {
@@ -42,6 +45,8 @@ class DashboardViewModel(repository: FinanzasRepository) : ViewModel() {
         val inicioSemana = DateUtils.inicioSemana(hoy, DayOfWeek.of(config.diaCorteIngreso))
         val inicioMes = DateUtils.inicioMes(hoy)
         val inicioAnio = DateUtils.inicioAnio(hoy)
+        val inicioMesAnterior = inicioMes.minusMonths(1)
+        val finMesAnterior = inicioMes.minusDays(1)
 
         val ingresoTotal = ingresos.sumOf { it.monto }
         val gastoTotal = gastos.sumOf { it.monto }
@@ -49,15 +54,23 @@ class DashboardViewModel(repository: FinanzasRepository) : ViewModel() {
         val ingresoMensualEstimado = config.ingresoSemanalAuto * SEMANAS_POR_MES
         val totalGastosFijos = gastosFijos.filter { it.activo }.sumOf { it.monto }
         val proyeccionAhorroMensual = ingresoMensualEstimado - totalGastosFijos
+        val ingresoMesActual = ingresos.filter { !it.fecha.isBefore(inicioMes) }.sumOf { it.monto }
         val gastoMesActual = gastos.filter { !it.fecha.isBefore(inicioMes) }.sumOf { it.monto }
         val gastoVariableMes = (gastoMesActual - totalGastosFijos).coerceAtLeast(0.0)
+
+        val ingresoMesAnterior = ingresos
+            .filter { !it.fecha.isBefore(inicioMesAnterior) && !it.fecha.isAfter(finMesAnterior) }
+            .sumOf { it.monto }
+        val gastoMesAnterior = gastos
+            .filter { !it.fecha.isBefore(inicioMesAnterior) && !it.fecha.isAfter(finMesAnterior) }
+            .sumOf { it.monto }
 
         DashboardUiState(
             cargando = false,
             saldoActual = ingresoTotal - gastoTotal,
             ingresoHoy = ingresos.filter { it.fecha == hoy }.sumOf { it.monto },
             ingresoSemana = ingresos.filter { !it.fecha.isBefore(inicioSemana) }.sumOf { it.monto },
-            ingresoMes = ingresos.filter { !it.fecha.isBefore(inicioMes) }.sumOf { it.monto },
+            ingresoMes = ingresoMesActual,
             ingresoAnio = ingresos.filter { !it.fecha.isBefore(inicioAnio) }.sumOf { it.monto },
             gastoHoy = gastos.filter { it.fecha == hoy }.sumOf { it.monto },
             gastoSemana = gastos.filter { !it.fecha.isBefore(inicioSemana) }.sumOf { it.monto },
@@ -68,7 +81,10 @@ class DashboardViewModel(repository: FinanzasRepository) : ViewModel() {
             proyeccionAhorroAnual = proyeccionAhorroMensual * 12,
             margenDisponible = proyeccionAhorroMensual - gastoVariableMes,
             alertaGastosExcedidos = ingresoMensualEstimado > 0 &&
-                gastoMesActual >= config.umbralAlertaPorcentaje * ingresoMensualEstimado
+                gastoMesActual >= config.umbralAlertaPorcentaje * ingresoMensualEstimado,
+            gastoMesAnterior = gastoMesAnterior,
+            ahorroMesActual = ingresoMesActual - gastoMesActual,
+            ahorroMesAnterior = ingresoMesAnterior - gastoMesAnterior
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), DashboardUiState())
 }

@@ -10,10 +10,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,6 +30,8 @@ import com.finanzasbrutal.app.ui.theme.AzulIngreso
 import com.finanzasbrutal.app.ui.theme.RojoGasto
 import com.finanzasbrutal.app.ui.theme.VerdeAhorro
 import com.finanzasbrutal.app.util.CurrencyUtils
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 @Composable
 fun DashboardScreen(repository: FinanzasRepository) {
@@ -70,6 +74,15 @@ fun DashboardScreen(repository: FinanzasRepository) {
         FilaDosStats("Mes", estado.gastoMes, "Año", estado.gastoAnio, RojoGasto)
         Spacer(Modifier.height(20.dp))
 
+        SeccionTitulo("Comparado con el mes anterior")
+        ComparativaMesCard(
+            gastoActual = estado.gastoMes,
+            gastoAnterior = estado.gastoMesAnterior,
+            ahorroActual = estado.ahorroMesActual,
+            ahorroAnterior = estado.ahorroMesAnterior
+        )
+        Spacer(Modifier.height(20.dp))
+
         SeccionTitulo("Proyección de ahorro")
         FilaDosStats(
             "Mensual", estado.proyeccionAhorroMensual,
@@ -97,6 +110,50 @@ fun DashboardScreen(repository: FinanzasRepository) {
 private fun SeccionTitulo(texto: String) {
     Text(texto, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
     Spacer(Modifier.height(8.dp))
+}
+
+@Composable
+private fun ComparativaMesCard(
+    gastoActual: Double,
+    gastoAnterior: Double,
+    ahorroActual: Double,
+    ahorroAnterior: Double
+) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            FilaComparativa("Gasto", gastoActual, gastoAnterior, subeEsMalo = true)
+            Spacer(Modifier.height(12.dp))
+            FilaComparativa("Ahorro", ahorroActual, ahorroAnterior, subeEsMalo = false)
+        }
+    }
+}
+
+@Composable
+private fun FilaComparativa(etiqueta: String, actual: Double, anterior: Double, subeEsMalo: Boolean) {
+    val variacion = calcularVariacionPorcentual(actual, anterior)
+    val subio = variacion != null && variacion > 0
+    val colorVariacion = when {
+        variacion == null -> MaterialTheme.colorScheme.onSurfaceVariant
+        subio == subeEsMalo -> RojoGasto
+        else -> VerdeAhorro
+    }
+
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+        Column {
+            Text(etiqueta, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(CurrencyUtils.formatear(actual), fontWeight = FontWeight.Bold)
+        }
+        Text(
+            text = if (variacion == null) "sin datos del mes anterior" else "${if (subio) "+" else ""}${variacion.roundToInt()}% vs. mes pasado",
+            color = colorVariacion,
+            style = MaterialTheme.typography.labelMedium
+        )
+    }
+}
+
+private fun calcularVariacionPorcentual(actual: Double, anterior: Double): Double? {
+    if (anterior == 0.0) return null
+    return (actual - anterior) / abs(anterior) * 100
 }
 
 @Composable

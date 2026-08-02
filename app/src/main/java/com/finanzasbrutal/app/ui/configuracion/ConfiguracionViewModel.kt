@@ -41,6 +41,8 @@ class ConfiguracionViewModel(private val repository: FinanzasRepository) : ViewM
 
     fun actualizarNotificaciones(activas: Boolean) = guardar { it.copy(notificacionesActivas = activas) }
 
+    fun actualizarUmbralAlerta(porcentaje: Double) = guardar { it.copy(umbralAlertaPorcentaje = porcentaje) }
+
     fun actualizarGastoFijo(gastoFijo: GastoFijo) {
         viewModelScope.launch { repository.actualizarGastoFijo(gastoFijo) }
     }

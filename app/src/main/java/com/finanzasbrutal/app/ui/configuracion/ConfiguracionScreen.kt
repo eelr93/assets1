@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,6 +51,7 @@ import com.finanzasbrutal.app.util.DateUtils
 import com.finanzasbrutal.app.util.ExportUtils
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
+import kotlin.math.roundToInt
 
 @Composable
 fun ConfiguracionScreen(repository: FinanzasRepository) {
@@ -102,6 +104,11 @@ fun ConfiguracionScreen(repository: FinanzasRepository) {
                     onCheckedChange = viewModel::actualizarNotificaciones
                 )
             }
+            Spacer(Modifier.height(16.dp))
+            SelectorUmbralAlerta(
+                valorInicial = estado.configuracion.umbralAlertaPorcentaje,
+                onGuardar = viewModel::actualizarUmbralAlerta
+            )
         }
         Spacer(Modifier.height(16.dp))
 
@@ -221,6 +228,23 @@ private fun CampoMontoConGuardar(
             }
         },
         modifier = Modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun SelectorUmbralAlerta(valorInicial: Double, onGuardar: (Double) -> Unit) {
+    var valor by remember(valorInicial) { mutableStateOf(valorInicial.toFloat()) }
+
+    Text(
+        "Avisar si el gasto del mes supera el ${(valor * 100).roundToInt()}% del ingreso mensual estimado",
+        style = MaterialTheme.typography.bodyMedium
+    )
+    Slider(
+        value = valor,
+        onValueChange = { valor = it },
+        onValueChangeFinished = { onGuardar(valor.toDouble()) },
+        valueRange = 0.3f..0.9f,
+        steps = 11 // pasos de 5%
     )
 }
 
