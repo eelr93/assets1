@@ -1,11 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBook, getBookFile, getProgress, saveProgress } from "@/lib/db";
 import { parseBook } from "@/lib/parsers";
+import { paragraphsToPlainText } from "@/lib/text";
 import type { ParsedBook, StoredBook } from "@/lib/types";
 import { useSettings } from "@/context/SettingsContext";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { Quiz } from "@/components/Quiz";
 
 const FONT_FAMILY: Record<string, string> = {
   accessible: "var(--font-accessible)",
@@ -57,6 +59,10 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
 
   const totalChapters = parsed?.chapters.length ?? 0;
   const chapter = parsed?.chapters[chapterIndex];
+  const chapterText = useMemo(
+    () => (chapter ? paragraphsToPlainText(chapter.paragraphs) : ""),
+    [chapter]
+  );
 
   const persist = useCallback(
     (idx: number) => {
@@ -255,6 +261,13 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
               />
             );
           })}
+
+          <Quiz
+            key={chapterIndex}
+            bookTitle={book.title}
+            chapterTitle={chapter.title}
+            chapterText={chapterText}
+          />
 
           <nav className="mt-10 flex items-center justify-between gap-3 border-t pt-6" style={{ borderColor: "color-mix(in srgb, var(--read-fg) 15%, transparent)" }}>
             <button

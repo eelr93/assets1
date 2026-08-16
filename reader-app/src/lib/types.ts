@@ -57,6 +57,16 @@ export type ReadingSettings = {
   focusDimOpacity: number; // 0..1, opacity applied to non-active paragraphs
 };
 
+export type ProfileStatus = "pending" | "approved" | "rejected";
+
+export type Profile = {
+  id: string;
+  email: string;
+  status: ProfileStatus;
+  is_admin: boolean;
+  created_at: string;
+};
+
 export const DEFAULT_SETTINGS: ReadingSettings = {
   theme: "light",
   font: "accessible",

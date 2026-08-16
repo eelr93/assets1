@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Atkinson_Hyperlegible, Literata, Inter } from "next/font/google";
 import { SettingsProvider } from "@/context/SettingsContext";
+import { AuthProvider } from "@/context/AuthContext";
 import { ServiceWorkerRegister } from "@/components/ServiceWorkerRegister";
 import "./globals.css";
 
@@ -50,7 +51,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${accessibleFont.variable} ${readingSerif.variable} ${systemFont.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <SettingsProvider>{children}</SettingsProvider>
+        <AuthProvider>
+          <SettingsProvider>{children}</SettingsProvider>
+        </AuthProvider>
         <ServiceWorkerRegister />
       </body>
     </html>
