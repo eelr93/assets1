@@ -10,6 +10,7 @@ import { useAuth } from "@/context/AuthContext";
 import { useVozAlta } from "@/lib/useVozAlta";
 import { usePantallaEncendida } from "@/lib/usePantallaEncendida";
 import { useDesplazamientoAuto, VELOCIDADES_SCROLL } from "@/lib/useDesplazamientoAuto";
+import { idsDescargados, type IdVozNatural } from "@/lib/vozNatural";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { BarraVoz } from "@/components/BarraVoz";
 import { PanelIndice } from "@/components/PanelIndice";
@@ -117,8 +118,37 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
    */
   const seguirEnElSiguiente = useRef(false);
 
+  /**
+   * La voz natural elegida, pero solo si el modelo sigue estando.
+   *
+   * El navegador puede borrar lo guardado cuando le falta lugar. Si eso pasa y
+   * se intentara leer igual, cada párrafo fallaría y la app quedaría muda sin
+   * decir por qué. Se comprueba una vez al abrir el libro y, si no está, se lee
+   * con la voz del sistema como si nada.
+   */
+  const [vozNaturalLista, setVozNaturalLista] = useState<IdVozNatural | null>(null);
+  useEffect(() => {
+    const elegida = settings.vozNatural;
+    let vivo = true;
+    (async () => {
+      // Sin voz elegida no hace falta ir a preguntar nada, pero el camino es el
+      // mismo: así el estado se fija siempre desde el mismo lugar y nunca de
+      // forma sincrónica, que es lo que dispara renders en cascada.
+      const ids = elegida ? await idsDescargados() : [];
+      if (!vivo) return;
+      const disponible = ids.find((id) => id === elegida) ?? null;
+      setVozNaturalLista(disponible);
+      if (elegida && !disponible) update({ vozNatural: null });
+    })();
+    return () => {
+      vivo = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.vozNatural]);
+
   const voz = useVozAlta({
     parrafos: textosParaVoz,
+    vozNaturalId: vozNaturalLista,
     // Mientras habla, el párrafo activo lo manda la voz y no el desplazamiento:
     // así el resaltado del modo enfoque acompaña a lo que se está escuchando.
     onParrafo: (i) => {
@@ -718,6 +748,24 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
         depende del sintetizador, y en un navegador sin voces era lo único que
         quedaba sin ningún control en pantalla.
       */}
+      {/*
+        Si el modelo neuronal falla, hay que decirlo. Sin esto la voz
+        simplemente no arranca y no hay forma de saber si se rompió la app, si
+        falta internet o si el teléfono no da: se queda mirando una pantalla
+        muda. El aviso va arriba de los controles y ofrece la salida.
+      */}
+      {voz.errorNatural && (
+        <div className="pointer-events-auto fixed inset-x-0 bottom-24 z-20 mx-auto flex max-w-md items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3 text-sm text-[var(--foreground)] shadow-lg">
+          <span className="flex-1">{voz.errorNatural}</span>
+          <button
+            onClick={() => update({ vozNatural: null })}
+            className="min-h-11 shrink-0 rounded-lg border border-[var(--border)] px-3 font-medium"
+          >
+            Usar la del sistema
+          </button>
+        </div>
+      )}
+
       <BarraVoz
           vozDisponible={voz.disponible}
           estado={voz.estado}
@@ -732,6 +780,8 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
           vozElegida={voz.vozElegida}
           onVoz={voz.cambiarVoz}
           onProbar={voz.probar}
+          vozNatural={settings.vozNatural}
+          onVozNatural={(id) => update({ vozNatural: id })}
           minutosTemporizador={voz.minutosTemporizador}
           minutosRestantes={voz.minutosRestantes}
           onTemporizador={voz.programarTemporizador}

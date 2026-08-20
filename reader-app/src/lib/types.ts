@@ -78,6 +78,15 @@ export type ReadingSettings = {
    * siente el doble de rápida. En renglones, la sensación no cambia.
    */
   autoScrollRenglones: number;
+  /**
+   * Modelo de voz neuronal a usar, o `null` para la voz del sistema.
+   *
+   * Se guarda el identificador y no el modelo: el modelo vive en el
+   * almacenamiento del navegador y puede no estar (el sistema lo puede borrar
+   * si hace falta lugar). Al abrir, la app comprueba que siga descargado y si
+   * no está vuelve a la voz del sistema en lugar de quedarse muda.
+   */
+  vozNatural: string | null;
 };
 
 export type ProfileStatus = "pending" | "approved" | "rejected";
@@ -102,4 +111,5 @@ export const DEFAULT_SETTINGS: ReadingSettings = {
   focusMode: false,
   focusDimOpacity: 0.35,
   autoScrollRenglones: 18,
+  vozNatural: null,
 };

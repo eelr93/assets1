@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import type { EstadoVoz } from "@/lib/useVozAlta";
+import type { IdVozNatural } from "@/lib/vozNatural";
+import { PanelVozNatural } from "@/components/PanelVozNatural";
 
 /**
  * Controles de lectura: la voz y el desplazamiento automático.
@@ -30,6 +32,8 @@ export function BarraVoz({
   vozElegida,
   onVoz,
   onProbar,
+  vozNatural,
+  onVozNatural,
   minutosTemporizador,
   minutosRestantes,
   onTemporizador,
@@ -55,6 +59,9 @@ export function BarraVoz({
   onVoz: (voiceURI: string) => void;
   /** Lee una frase suelta con esa voz, para compararlas sin arrancar un capítulo. */
   onProbar: (voiceURI: string) => void;
+  /** Modelo neuronal en uso, o `null` si lee con la voz del sistema. */
+  vozNatural: string | null;
+  onVozNatural: (id: IdVozNatural | null) => void;
   minutosTemporizador: readonly number[];
   minutosRestantes: number | null;
   onTemporizador: (minutos: number) => void;
@@ -172,6 +179,8 @@ export function BarraVoz({
           vozElegida={vozElegida}
           onVoz={onVoz}
           onProbar={onProbar}
+          vozNatural={vozNatural}
+          onVozNatural={onVozNatural}
           puedeProbar={estado === "detenido"}
           minutosTemporizador={minutosTemporizador}
           minutosRestantes={minutosRestantes}
@@ -258,6 +267,8 @@ function OpcionesVoz({
   vozElegida,
   onVoz,
   onProbar,
+  vozNatural,
+  onVozNatural,
   puedeProbar,
   minutosTemporizador,
   minutosRestantes,
@@ -271,6 +282,8 @@ function OpcionesVoz({
   vozElegida: string;
   onVoz: (voiceURI: string) => void;
   onProbar: (voiceURI: string) => void;
+  vozNatural: string | null;
+  onVozNatural: (id: IdVozNatural | null) => void;
   puedeProbar: boolean;
   minutosTemporizador: readonly number[];
   minutosRestantes: number | null;
@@ -325,10 +338,15 @@ function OpcionesVoz({
           </div>
         </section>
 
+        <PanelVozNatural elegida={vozNatural} onElegir={onVozNatural} />
+
+        {/* La voz del sistema queda debajo de la natural pero no se esconde:
+            es la que anda seguro en cualquier teléfono, y sigue siendo a la que
+            hay que poder volver si la otra se entrecorta. */}
         {voces.length > 0 && (
           <section className="flex flex-col gap-2">
             <label htmlFor="voz-lectura" className="text-sm font-medium text-[var(--foreground)]/70">
-              Voz
+              Voz del sistema
             </label>
             <div className="flex gap-2">
               <select

@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { habilitarAudio, obtenerAudio, sintetizar, type IdVozNatural } from "./vozNatural";
+
 
 /**
  * LECTURA EN VOZ ALTA
@@ -39,10 +41,16 @@ const MINUTOS_TEMPORIZADOR = [0, 15, 30, 45, 60] as const;
 
 export function useVozAlta({
   parrafos,
+  vozNaturalId,
   onParrafo,
   onFinDelCapitulo,
 }: {
   parrafos: string[];
+  /**
+   * Si está puesta, se lee con el modelo neuronal en lugar del sintetizador del
+   * sistema. Ver `vozNatural.ts` para lo que eso implica.
+   */
+  vozNaturalId?: IdVozNatural | null;
   onParrafo?: (indice: number) => void;
   /**
    * Se llama cuando la voz terminó el último párrafo por su cuenta.
@@ -117,9 +125,13 @@ export function useVozAlta({
   }, []);
 
   const detener = useCallback(() => {
-    if (!disponible) return;
+    // El número de tanda se sube siempre: aunque no haya sintetizador puede
+    // estar sonando la voz natural, que no lo usa para nada.
     tandaRef.current++;
-    window.speechSynthesis.cancel();
+    const a = obtenerAudio();
+    a.pause();
+    a.removeAttribute("src");
+    if (disponible) window.speechSynthesis.cancel();
     setEstado("detenido");
   }, [disponible]);
 
@@ -132,6 +144,132 @@ export function useVozAlta({
     }
   }, []);
 
+  // ── Motor de la voz natural ───────────────────────────────────────────────
+
+  const usandoNatural = Boolean(vozNaturalId);
+
+  /** Se muestra si el modelo falla, para no dejar la app muda y sin explicación. */
+  const [errorNatural, setErrorNatural] = useState<string | null>(null);
+
+  /**
+   * Audio ya generado, por índice de párrafo.
+   *
+   * Se guardan pocos a propósito. El audio sale sin comprimir: un párrafo largo
+   * puede pesar más de un mega, y un capítulo entero llenaría la memoria del
+   * teléfono a cambio de nada, porque nadie vuelve atrás treinta párrafos.
+   */
+  const audiosRef = useRef<Map<number, string>>(new Map());
+
+  const olvidarAudios = useCallback((conservar: number[] = []) => {
+    for (const [i, url] of audiosRef.current) {
+      if (conservar.includes(i)) continue;
+      URL.revokeObjectURL(url);
+      audiosRef.current.delete(i);
+    }
+  }, []);
+
+  // Al cambiar de capítulo el audio viejo no sirve más y ocupa lugar.
+  useEffect(() => {
+    olvidarAudios();
+  }, [parrafos, olvidarAudios]);
+
+  const generar = useCallback(
+    async (i: number): Promise<string | null> => {
+      if (!vozNaturalId) return null;
+      const guardado = audiosRef.current.get(i);
+      if (guardado) return guardado;
+
+      const texto = parrafos[i];
+      if (!texto) return null;
+
+      const wav = await sintetizar(vozNaturalId, texto);
+      const url = URL.createObjectURL(wav);
+      audiosRef.current.set(i, url);
+      return url;
+    },
+    [parrafos, vozNaturalId]
+  );
+
+  /** Reproduce una fuente y avisa si terminó de verdad o la interrumpieron. */
+  const reproducir = useCallback((url: string, tanda: number) => {
+    const a = obtenerAudio();
+    return new Promise<boolean>((resolver) => {
+      const limpiar = () => {
+        a.removeEventListener("ended", alTerminar);
+        a.removeEventListener("error", alFallar);
+      };
+      // Pausar no dispara `ended`, así que una pausa deja esta promesa
+      // esperando — que es justo lo que se quiere: al reanudar sigue sola.
+      const alTerminar = () => {
+        limpiar();
+        resolver(tandaRef.current === tanda);
+      };
+      const alFallar = () => {
+        limpiar();
+        resolver(false);
+      };
+      a.addEventListener("ended", alTerminar);
+      a.addEventListener("error", alFallar);
+      a.src = url;
+      a.play().catch(() => alFallar());
+    });
+  }, []);
+
+  /**
+   * Lee de un párrafo hasta el final del capítulo con el modelo neuronal.
+   *
+   * Mientras suena un párrafo se va generando el siguiente. Sin eso habría un
+   * silencio de varios segundos entre párrafo y párrafo, que en un libro es
+   * insoportable; con eso, si el teléfono da abasto, no se nota nada.
+   */
+  const leerNatural = useCallback(
+    async (desde: number, vel: number, tanda: number) => {
+      const a = obtenerAudio();
+      a.playbackRate = vel;
+      setErrorNatural(null);
+
+      for (let i = desde; i < parrafos.length; i++) {
+        if (tandaRef.current !== tanda) return;
+        if (!parrafos[i]) continue;
+
+        let url: string | null;
+        try {
+          url = await generar(i);
+        } catch (err) {
+          if (tandaRef.current !== tanda) return;
+          console.error(err);
+          setErrorNatural(
+            "No se pudo generar el audio con la voz natural. Probá con la voz del sistema."
+          );
+          setEstado("detenido");
+          return;
+        }
+        if (tandaRef.current !== tanda) return;
+        if (!url) continue;
+
+        setIndice(i);
+        onParrafo?.(i);
+
+        // El siguiente se va generando de fondo; no se espera.
+        const siguiente = parrafos.findIndex((t, k) => k > i && t.length > 0);
+        if (siguiente !== -1) generar(siguiente).catch(() => {});
+
+        // Se conservan el que suena y el que se está generando; el resto se
+        // libera. El audio sale sin comprimir y un capítulo entero en memoria
+        // sería mucho, a cambio de nada: nadie vuelve treinta párrafos atrás.
+        olvidarAudios([i, siguiente]);
+
+        const termino = await reproducir(url, tanda);
+        if (!termino) return;
+      }
+
+      if (tandaRef.current !== tanda) return;
+      setEstado("detenido");
+      onFinDelCapitulo?.();
+    },
+    [parrafos, generar, reproducir, olvidarAudios, onParrafo, onFinDelCapitulo]
+  );
+
   /**
    * Encola desde un párrafo hasta el final del capítulo.
    *
@@ -141,6 +279,15 @@ export function useVozAlta({
    */
   const comenzar = useCallback(
     (desde = 0, vel: number = velocidad) => {
+      if (usandoNatural) {
+        const tanda = ++tandaRef.current;
+        // Habilitar el audio **acá adentro**, mientras el toque todavía cuenta.
+        habilitarAudio();
+        setEstado("leyendo");
+        leerNatural(desde, vel, tanda);
+        return;
+      }
+
       if (!disponible) return;
 
       const tanda = ++tandaRef.current;
@@ -181,23 +328,35 @@ export function useVozAlta({
 
       setEstado("leyendo");
     },
-    [disponible, parrafos, velocidad, onParrafo, onFinDelCapitulo]
+    [disponible, parrafos, velocidad, onParrafo, onFinDelCapitulo, usandoNatural, leerNatural]
   );
 
   const pausar = useCallback(() => {
+    if (usandoNatural) {
+      obtenerAudio().pause();
+      setEstado("pausado");
+      return;
+    }
     if (!disponible) return;
     window.speechSynthesis.pause();
     setEstado("pausado");
-  }, [disponible]);
+  }, [disponible, usandoNatural]);
 
   const reanudar = useCallback(() => {
+    if (usandoNatural) {
+      obtenerAudio().play().catch(() => {});
+      setEstado("leyendo");
+      return;
+    }
     if (!disponible) return;
     window.speechSynthesis.resume();
     setEstado("leyendo");
-  }, [disponible]);
+  }, [disponible, usandoNatural]);
 
-  // Remedio al corte de Chrome a los ~15 segundos (ver punto 2 arriba).
+  // Remedio al corte de Chrome a los ~15 segundos (ver punto 2 arriba). No
+  // aplica a la voz natural, que sale por un elemento de audio común.
   useEffect(() => {
+    if (usandoNatural) return;
     if (estado !== "leyendo") return;
     const latido = setInterval(() => {
       if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
@@ -206,17 +365,28 @@ export function useVozAlta({
       }
     }, 10000);
     return () => clearInterval(latido);
-  }, [estado]);
+  }, [estado, usandoNatural]);
 
-  /** Cambiar la velocidad exige rearmar la cola: ya no se puede tocar la que suena. */
+  /**
+   * Cambiar la velocidad.
+   *
+   * Con el sintetizador del sistema hay que rearmar la cola: una locución ya
+   * encolada no se puede acelerar. La voz natural sale por un elemento de audio
+   * común, así que ahí basta con tocarle la velocidad de reproducción — y de
+   * paso el cambio es instantáneo y no vuelve a empezar el párrafo.
+   */
   const cambiarVelocidad = useCallback(
     (nueva: number) => {
       setVelocidad(nueva);
+      if (usandoNatural) {
+        obtenerAudio().playbackRate = nueva;
+        return;
+      }
       // Se rearma desde el párrafo actual, con la velocidad nueva pasada a mano
       // porque el estado todavía no se actualizó en este mismo tick.
       if (estado === "leyendo") comenzar(indice, nueva);
     },
-    [estado, indice, comenzar]
+    [estado, indice, comenzar, usandoNatural]
   );
 
   // ── Temporizador para dormir ──────────────────────────────────────────────
@@ -265,20 +435,41 @@ export function useVozAlta({
    */
   const probar = useCallback(
     (voiceURI?: string) => {
-      if (!disponible) return;
+      const frase = "Así suena esta voz leyendo un renglón del libro.";
       tandaRef.current++;
+
+      // Con la voz natural la muestra también hay que generarla. Tarda unos
+      // segundos la primera vez, que es justamente el dato que conviene
+      // conocer antes de elegirla para un libro entero.
+      if (vozNaturalId) {
+        habilitarAudio();
+        const a = obtenerAudio();
+        sintetizar(vozNaturalId, frase)
+          .then((wav) => {
+            const url = URL.createObjectURL(wav);
+            a.src = url;
+            a.playbackRate = velocidad;
+            a.play().catch(() => {});
+            a.addEventListener("ended", () => URL.revokeObjectURL(url), { once: true });
+          })
+          .catch((err) => {
+            console.error(err);
+            setErrorNatural("No se pudo generar la muestra con la voz natural.");
+          });
+        return;
+      }
+
+      if (!disponible) return;
       window.speechSynthesis.cancel();
 
       const v = voiceURI ? voces.find((x) => x.voiceURI === voiceURI) ?? null : vozRef.current;
-      const locucion = new SpeechSynthesisUtterance(
-        "Así suena esta voz leyendo un renglón del libro."
-      );
+      const locucion = new SpeechSynthesisUtterance(frase);
       locucion.lang = v?.lang ?? "es-ES";
       if (v) locucion.voice = v;
       locucion.rate = velocidad;
       window.speechSynthesis.speak(locucion);
     },
-    [disponible, voces, velocidad]
+    [disponible, voces, velocidad, vozNaturalId]
   );
 
   /** Cambiar de voz, igual que la velocidad, obliga a rearmar la cola. */
@@ -298,6 +489,8 @@ export function useVozAlta({
     indice,
     velocidad,
     velocidades: VELOCIDADES,
+    usandoNatural,
+    errorNatural,
     voces,
     vozElegida,
     minutosTemporizador: MINUTOS_TEMPORIZADOR,
