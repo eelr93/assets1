@@ -64,9 +64,25 @@ export function useVozAlta({
 
   const vozRef = useRef<SpeechSynthesisVoice | null>(null);
 
-  // Distingue un final natural de uno provocado por `cancel()`, que también
-  // dispara `onend` en todas las locuciones pendientes.
-  const cancelandoRef = useRef(false);
+  /**
+   * Número de tanda, para distinguir un final de verdad de la sacudida que
+   * deja `cancel()`.
+   *
+   * `cancel()` dispara `onend` sobre la locución que estaba sonando, y ese
+   * evento llega **después**, en otro turno del bucle de eventos. Antes acá
+   * había un booleano que se encendía justo antes de cancelar y se apagaba en
+   * el renglón siguiente: para cuando el evento llegaba ya estaba apagado, así
+   * que la cancelación se leía como "terminó el capítulo".
+   *
+   * En la práctica eso significaba que interrumpir la voz durante el último
+   * párrafo de un capítulo saltaba al capítulo siguiente sola. Se llegaba
+   * cambiando la velocidad o la voz ahí, y ahora también tocando un párrafo
+   * para releer desde otro lado.
+   *
+   * Con un número, cada locución recuerda de qué tanda es y las viejas se
+   * ignoran, no importa cuánto tarde el navegador en avisar.
+   */
+  const tandaRef = useRef(0);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -102,7 +118,7 @@ export function useVozAlta({
 
   const detener = useCallback(() => {
     if (!disponible) return;
-    cancelandoRef.current = true;
+    tandaRef.current++;
     window.speechSynthesis.cancel();
     setEstado("detenido");
   }, [disponible]);
@@ -111,6 +127,7 @@ export function useVozAlta({
   // sonando aunque el componente desaparezca.
   useEffect(() => () => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      tandaRef.current++;
       window.speechSynthesis.cancel();
     }
   }, []);
@@ -126,9 +143,8 @@ export function useVozAlta({
     (desde = 0, vel: number = velocidad) => {
       if (!disponible) return;
 
-      cancelandoRef.current = true;
+      const tanda = ++tandaRef.current;
       window.speechSynthesis.cancel();
-      cancelandoRef.current = false;
 
       const pendientes = parrafos
         .map((texto, i) => ({ texto, i }))
@@ -146,6 +162,7 @@ export function useVozAlta({
         locucion.rate = vel;
 
         locucion.onstart = () => {
+          if (tandaRef.current !== tanda) return;
           setIndice(i);
           onParrafo?.(i);
         };
@@ -153,7 +170,7 @@ export function useVozAlta({
         // Solo el último decide que terminó el capítulo.
         if (posicion === pendientes.length - 1) {
           locucion.onend = () => {
-            if (cancelandoRef.current) return;
+            if (tandaRef.current !== tanda) return;
             setEstado("detenido");
             onFinDelCapitulo?.();
           };

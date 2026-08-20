@@ -4,10 +4,10 @@ import { useState } from "react";
 import type { EstadoVoz } from "@/lib/useVozAlta";
 
 /**
- * Controles de la lectura en voz alta.
+ * Controles de lectura: la voz y el desplazamiento automático.
  *
  * Flota sobre el texto, cerca del pulgar, y solo se despliega entera cuando
- * está leyendo: en reposo es un único botón grande. Los botones miden 48 px
+ * está leyendo: en reposo son uno o dos botones grandes. Los botones miden 48 px
  * como mínimo, que es el tamaño a partir del cual se acierta sin apuntar —
  * importa cuando quien usa la app no ve del todo bien.
  *
@@ -17,6 +17,7 @@ import type { EstadoVoz } from "@/lib/useVozAlta";
  * tres, aunque haya que tocar una vez más para llegar a los otros.
  */
 export function BarraVoz({
+  vozDisponible,
   estado,
   velocidad,
   velocidades,
@@ -32,7 +33,14 @@ export function BarraVoz({
   minutosRestantes,
   onTemporizador,
   navegacionFoco,
+  desplazamiento,
 }: {
+  /**
+   * Si el navegador tiene sintetizador de voz. Sin él la barra sigue existiendo
+   * porque el desplazamiento automático no depende de la voz — y era lo único
+   * que quedaba en pantalla en un navegador sin voces.
+   */
+  vozDisponible: boolean;
   estado: EstadoVoz;
   velocidad: number;
   velocidades: readonly number[];
@@ -54,6 +62,21 @@ export function BarraVoz({
    * seleccionar y confunde: acá se ven, se tocan y no tapan nada.
    */
   navegacionFoco?: { anterior: () => void; siguiente: () => void };
+  /**
+   * Desplazamiento automático del texto, para leer con la vista sin arrastrar.
+   *
+   * Se muestra solo con la voz callada: mientras habla, el que desplaza es el
+   * resaltado de la voz, y las dos cosas juntas se pelean.
+   */
+  desplazamiento: {
+    activo: boolean;
+    etiqueta: string;
+    onAlternar: () => void;
+    onMasLento: () => void;
+    onMasRapido: () => void;
+    puedeMasLento: boolean;
+    puedeMasRapido: boolean;
+  };
 }) {
   const [opcionesAbiertas, setOpcionesAbiertas] = useState(false);
   const activo = estado !== "detenido";
@@ -82,6 +105,56 @@ export function BarraVoz({
     </div>
   );
 
+  /*
+    Desplazamiento automático. Apagado es un botón solo; encendido aparecen el
+    − y el + de velocidad al lado, que es cuando hacen falta: se enciende, se ve
+    si va cómodo y se corrige ahí mismo sin abrir nada. Meterlos en un panel
+    obligaría a leer un rato, abrir, ajustar y volver a encontrar el renglón.
+  */
+  const barraDesplazamiento = !activo && (
+    <div className={marco} style={estiloMarco}>
+      {desplazamiento.activo && (
+        <button
+          onClick={desplazamiento.onMasLento}
+          disabled={!desplazamiento.puedeMasLento}
+          aria-label="Desplazar más lento"
+          className={`${boton} w-11 text-xl font-bold disabled:opacity-25`}
+        >
+          −
+        </button>
+      )}
+
+      <button
+        onClick={desplazamiento.onAlternar}
+        aria-pressed={desplazamiento.activo}
+        className={`${boton} gap-2 px-4 font-medium`}
+      >
+        {desplazamiento.activo ? (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+        ) : (
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+            <path d="M12 4v14M7 13l5 5 5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+        {desplazamiento.activo ? desplazamiento.etiqueta : "Bajar solo"}
+      </button>
+
+      {desplazamiento.activo && (
+        <button
+          onClick={desplazamiento.onMasRapido}
+          disabled={!desplazamiento.puedeMasRapido}
+          aria-label="Desplazar más rápido"
+          className={`${boton} w-11 text-xl font-bold disabled:opacity-25`}
+        >
+          +
+        </button>
+      )}
+    </div>
+  );
+
   const contenedor =
     "pointer-events-none fixed inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]";
 
@@ -104,8 +177,9 @@ export function BarraVoz({
 
       <div className={contenedor}>
         {flechasFoco}
+        {barraDesplazamiento}
 
-        {!activo ? (
+        {!vozDisponible ? null : !activo ? (
           <button onClick={onLeer} className={`${marco} ${boton} gap-2 px-5 font-medium`} style={estiloMarco}>
             <IconoAltavoz />
             Escuchar
@@ -207,6 +281,12 @@ function OpcionesVoz({
             </svg>
           </button>
         </div>
+
+        {/* Tocar un párrafo para que la voz siga desde ahí no se descubre solo.
+            El aviso va acá, que es donde se entra a buscar cosas de la voz. */}
+        <p className="rounded-xl bg-[var(--surface-muted)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)]/75">
+          Mientras lee, tocá cualquier párrafo y la voz sigue desde ahí.
+        </p>
 
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium text-[var(--foreground)]/70">Velocidad</h3>

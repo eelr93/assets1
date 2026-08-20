@@ -3,12 +3,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBook, getBookFile, getMarcadores, getProgress, saveProgress, setMarcadores as guardarMarcadores } from "@/lib/db";
 import { parseBook } from "@/lib/parsers";
-import { paragraphsToPlainText, paragraphsToSpeakableText } from "@/lib/text";
+import { marcarTermino, paragraphsToPlainText, paragraphsToSpeakableText } from "@/lib/text";
 import type { Marcador, ParsedBook, StoredBook } from "@/lib/types";
 import { useSettings } from "@/context/SettingsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useVozAlta } from "@/lib/useVozAlta";
 import { usePantallaEncendida } from "@/lib/usePantallaEncendida";
+import { useDesplazamientoAuto, VELOCIDADES_SCROLL } from "@/lib/useDesplazamientoAuto";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { BarraVoz } from "@/components/BarraVoz";
 import { PanelIndice } from "@/components/PanelIndice";
@@ -31,6 +32,16 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
   const [panelOpen, setPanelOpen] = useState(false);
   const [indiceOpen, setIndiceOpen] = useState(false);
   const [marcadores, setMarcadores] = useState<Marcador[]>([]);
+
+  /**
+   * Lo último que se buscó, atado al capítulo donde se saltó.
+   *
+   * Guardar el capítulo adentro evita tener que limpiar el término cada vez que
+   * se cambia de capítulo: si no coincide, no se marca nada. Al volver a ese
+   * capítulo el resaltado sigue ahí, que es lo que se espera cuando se está
+   * yendo y viniendo entre dos pasajes.
+   */
+  const [busqueda, setBusqueda] = useState<{ termino: string; chapterIndex: number } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const paragraphRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -72,6 +83,24 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     [chapter]
   );
 
+  /**
+   * El HTML de cada párrafo, con lo buscado marcado si corresponde.
+   *
+   * Se marca el capítulo entero y no solo el párrafo al que se saltó: la
+   * palabra suele aparecer varias veces cerca, y ver las otras es lo que
+   * permite darse cuenta de si el pasaje es el que se estaba buscando.
+   *
+   * Va memorizado porque son unas cuantas expresiones regulares sobre todo el
+   * capítulo; sin esto se recalcularían en cada render, incluso al mover el
+   * resaltado de la voz de un párrafo al siguiente.
+   */
+  const parrafosHtml = useMemo(() => {
+    const parrafos = chapter?.paragraphs ?? [];
+    const termino = busqueda?.chapterIndex === chapterIndex ? busqueda.termino : null;
+    if (!termino) return parrafos.map((p) => p.html);
+    return parrafos.map((p) => (p.kind === "image" ? p.html : marcarTermino(p.html, termino)));
+  }, [chapter, busqueda, chapterIndex]);
+
   // ── Lectura en voz alta ───────────────────────────────────────────────────
   const textosParaVoz = useMemo(
     () => (chapter ? paragraphsToSpeakableText(chapter.paragraphs) : []),
@@ -108,6 +137,9 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
   });
 
   const leyendo = voz.estado !== "detenido";
+  // `voz` es un objeto nuevo en cada render; la función de adentro no. Se saca
+  // acá para poder ponerla como dependencia sin invalidar medio componente.
+  const comenzarVoz = voz.comenzar;
 
   // El efecto del desplazamiento se registra una vez por capítulo y necesita
   // saber si la voz está andando. Va por ref y no por dependencia a propósito:
@@ -180,25 +212,45 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
   );
 
   /**
-   * Enfocar el párrafo que se tocó.
+   * Qué pasa al tocar un párrafo.
    *
-   * Es la interacción central del modo enfoque y la más directa que hay: se
-   * toca lo que se quiere leer. Reemplaza al resaltado que seguía la posición
-   * de la pantalla, que obligaba a dejar el texto a la altura justa para que
-   * quedara marcado el párrafo correcto.
+   * Depende de si la voz está andando, y las dos cosas son la misma idea: se
+   * toca lo que se quiere leer.
    *
-   * No hace nada si hay texto seleccionado: soltar el dedo después de marcar
-   * una frase también dispara un clic, y mover el foco ahí sería un salto que
-   * nadie pidió.
+   * - **Con la voz andando, lee desde ahí.** Es la forma de volver atrás cuando
+   *   se distrajo tres párrafos, o de saltear un pasaje. Antes no había ninguna:
+   *   había que detener, desplazar hasta el lugar y volver a empezar, y como el
+   *   párrafo de arranque lo elegía el desplazamiento, dar en el correcto era
+   *   cuestión de suerte.
+   * - **Con la voz callada y el modo enfoque encendido, mueve el resaltado.** Es
+   *   la interacción central del modo enfoque, y de paso deja elegido desde
+   *   dónde va a arrancar "Escuchar".
+   *
+   * Con la voz callada y sin modo enfoque no hace nada: ahí un toque no
+   * significa nada, y hacer que empiece a hablar de golpe sería alarmante.
+   *
+   * En ningún caso hace algo si hay texto seleccionado — soltar el dedo después
+   * de marcar una frase también dispara un clic, y eso perdería la selección.
    */
-  const enfocarParrafo = useCallback(
+  const alTocarParrafo = useCallback(
     (i: number) => {
-      if (!settings.focusMode) return;
       if (!window.getSelection()?.isCollapsed) return;
+
+      if (leyendo) {
+        // El toque es el gesto del usuario que Safari exige para poder hablar,
+        // así que se puede encolar acá mismo sin que iOS lo rechace.
+        saltoManualHasta.current = Date.now() + 700;
+        setActiveIndex(i);
+        persist(i);
+        comenzarVoz(i);
+        return;
+      }
+
+      if (!settings.focusMode) return;
       setActiveIndex(i);
       persist(i);
     },
-    [settings.focusMode, persist]
+    [leyendo, settings.focusMode, persist, comenzarVoz]
   );
 
   /**
@@ -307,6 +359,55 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapter, chapterIndex]);
 
+  // ── Desplazamiento automático ─────────────────────────────────────────────
+
+  const desplazamiento = useDesplazamientoAuto({
+    contenedor: scrollRef,
+    renglonesPorMinuto: settings.autoScrollRenglones,
+    // El alto real de un renglón, para que la velocidad se sienta igual con
+    // letra chica y con letra grande.
+    altoDeRenglon: settings.fontSize * settings.lineHeight,
+    clave: chapterIndex,
+    hayMas: chapterIndex < totalChapters - 1,
+    // Al llegar al fondo sigue con el capítulo siguiente, igual que la voz. Si
+    // hubiera que tocar algo en cada final se pierde la mitad de la ventaja:
+    // lo que se busca es no despegar la vista del renglón.
+    onFinal: () => {
+      setChapterIndex(chapterIndex + 1);
+      setActiveIndex(0);
+    },
+  });
+
+  const detenerDesplazamiento = desplazamiento.detener;
+
+  /**
+   * En qué escalón de velocidad está, para poder subir y bajar de a uno.
+   *
+   * Lo guardado es la velocidad en renglones, no el escalón: si mañana cambia
+   * la tabla, un índice guardado apuntaría a otra cosa. Si el valor guardado no
+   * está en la tabla se cae al más cercano.
+   */
+  const nivelScroll = useMemo(() => {
+    let mejor = 0;
+    VELOCIDADES_SCROLL.forEach((v, i) => {
+      const dif = Math.abs(v.renglones - settings.autoScrollRenglones);
+      if (dif < Math.abs(VELOCIDADES_SCROLL[mejor].renglones - settings.autoScrollRenglones)) mejor = i;
+    });
+    return mejor;
+  }, [settings.autoScrollRenglones]);
+
+  const cambiarNivelScroll = (delta: number) => {
+    const destino = Math.max(0, Math.min(VELOCIDADES_SCROLL.length - 1, nivelScroll + delta));
+    update({ autoScrollRenglones: VELOCIDADES_SCROLL[destino].renglones });
+  };
+
+  // La voz también desplaza, párrafo por párrafo. Las dos cosas a la vez se
+  // pelean: el desplazamiento parejo arrastra el texto mientras el salto de la
+  // voz trata de centrar el párrafo, y queda temblando. Manda la voz.
+  useEffect(() => {
+    if (leyendo) detenerDesplazamiento();
+  }, [leyendo, detenerDesplazamiento]);
+
   const goToChapter = (idx: number) => {
     if (!parsed) return;
     const clamped = Math.max(0, Math.min(parsed.chapters.length - 1, idx));
@@ -362,9 +463,14 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
 
   /** Saltar a un punto concreto, desde el índice, un marcador o una búsqueda. */
   const irA = useCallback(
-    (ci: number, pi?: number) => {
+    (ci: number, pi?: number, termino?: string) => {
       setIndiceOpen(false);
       if (ci !== chapterIndex) setChapterIndex(ci);
+
+      // Se guarda junto con el capítulo en lugar de limpiarse a mano en cada
+      // lugar que cambia de capítulo — que son cinco, y olvidarse de uno deja
+      // el resaltado azul pegado en un capítulo que no se buscó.
+      setBusqueda(termino ? { termino, chapterIndex: ci } : null);
 
       if (pi === undefined) {
         setActiveIndex(0);
@@ -527,32 +633,35 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
                   }}
                   className="reader-paragraph my-4 flex justify-center"
                   style={{ opacity: dim ? 1 - settings.focusDimOpacity : 1 }}
-                  dangerouslySetInnerHTML={{ __html: p.html }}
+                  dangerouslySetInnerHTML={{ __html: parrafosHtml[i] }}
                 />
               );
             }
             const Tag = p.kind === "heading" ? (`h${p.level ?? 2}` as const) : "p";
+            // El toque hace algo distinto según el estado, así que también se
+            // ofrece distinto: sin nada que hacer no se muestra como tocable.
+            const tocable = leyendo || settings.focusMode;
             return (
               <Tag
                 key={i}
                 ref={(el: HTMLElement | null) => {
                   paragraphRefs.current[i] = el as HTMLDivElement | null;
                 }}
-                // Tocar un párrafo lo enfoca. Es la interacción central del modo
-                // enfoque: se toca lo que se quiere leer, sin apuntarle a nada
-                // chico ni dejar la pantalla en una posición exacta.
-                onClick={settings.focusMode ? () => enfocarParrafo(i) : undefined}
+                // Con la voz andando, lee desde acá. Con la voz callada y el
+                // modo enfoque encendido, mueve el resaltado. Es la misma idea
+                // en los dos casos: se toca lo que se quiere leer.
+                onClick={tocable ? () => alTocarParrafo(i) : undefined}
                 className={`reader-paragraph rounded-md ${p.kind === "heading" ? "mb-4 mt-8 font-bold" : "mb-4"} ${
-                  settings.focusMode ? "cursor-pointer" : ""
+                  tocable ? "cursor-pointer" : ""
                 } ${resaltar ? "reader-paragraph--activo" : ""}`}
                 style={{
                   background: resaltar ? "var(--read-paragraph-bg-active)" : "transparent",
                   opacity: dim ? 1 - settings.focusDimOpacity : 1,
                   // Sin esto, iOS espera 300 ms por si el toque es un doble
-                  // toque para hacer zoom, y el resaltado llega tarde.
-                  touchAction: settings.focusMode ? "manipulation" : undefined,
+                  // toque para hacer zoom, y la respuesta llega tarde.
+                  touchAction: tocable ? "manipulation" : undefined,
                 }}
-                dangerouslySetInnerHTML={{ __html: p.html }}
+                dangerouslySetInnerHTML={{ __html: parrafosHtml[i] }}
               />
             );
           })}
@@ -604,8 +713,13 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
         </div>
       </div>
 
-      {voz.disponible && (
-        <BarraVoz
+      {/*
+        La barra se muestra aunque no haya voz: el desplazamiento automático no
+        depende del sintetizador, y en un navegador sin voces era lo único que
+        quedaba sin ningún control en pantalla.
+      */}
+      <BarraVoz
+          vozDisponible={voz.disponible}
           estado={voz.estado}
           velocidad={voz.velocidad}
           velocidades={voz.velocidades}
@@ -627,8 +741,16 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
               ? { anterior: () => moverFoco(-1), siguiente: () => moverFoco(1) }
               : undefined
           }
+          desplazamiento={{
+            activo: desplazamiento.activo,
+            etiqueta: VELOCIDADES_SCROLL[nivelScroll].etiqueta,
+            onAlternar: desplazamiento.alternar,
+            onMasLento: () => cambiarNivelScroll(-1),
+            onMasRapido: () => cambiarNivelScroll(1),
+            puedeMasLento: nivelScroll > 0,
+            puedeMasRapido: nivelScroll < VELOCIDADES_SCROLL.length - 1,
+          }}
         />
-      )}
 
       {indiceOpen && (
         <PanelIndice

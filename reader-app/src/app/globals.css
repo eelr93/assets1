@@ -55,6 +55,8 @@ body {
   --read-paragraph-bg: transparent;
   --read-paragraph-bg-active: #ffe680;
   --read-marca: #d98b00;
+  --read-hallazgo-bg: #1d4ed8;
+  --read-hallazgo-fg: #ffffff;
 }
 .theme-sepia {
   --read-bg: #f4ecd8;
@@ -62,6 +64,8 @@ body {
   --read-paragraph-bg: transparent;
   --read-paragraph-bg-active: #e3c98a;
   --read-marca: #a06a1b;
+  --read-hallazgo-bg: #17408b;
+  --read-hallazgo-fg: #fdf6e6;
 }
 .theme-dark {
   --read-bg: #1e1f22;
@@ -69,6 +73,8 @@ body {
   --read-paragraph-bg: transparent;
   --read-paragraph-bg-active: #4a4f3a;
   --read-marca: #d8c86a;
+  --read-hallazgo-bg: #7ba7ff;
+  --read-hallazgo-fg: #0a1430;
 }
 .theme-night {
   --read-bg: #000000;
@@ -76,6 +82,8 @@ body {
   --read-paragraph-bg: transparent;
   --read-paragraph-bg-active: #3a3a18;
   --read-marca: #c2a83e;
+  --read-hallazgo-bg: #6f9dfa;
+  --read-hallazgo-fg: #000000;
 }
 .theme-contrast {
   --read-bg: #000000;
@@ -83,6 +91,22 @@ body {
   --read-paragraph-bg: transparent;
   --read-paragraph-bg-active: #4d4d00;
   --read-marca: #ffff00;
+  --read-hallazgo-bg: #00ffff;
+  --read-hallazgo-fg: #000000;
+}
+
+/* Lo que se buscó, dentro del texto.
+
+   Va en otro tono (azul o cian) y no en un amarillo más fuerte a propósito: el
+   párrafo que se está leyendo ya es ámbar, y dos amarillos distintos encima uno
+   del otro no se distinguen. Con el color invertido se ve incluso cuando el
+   hallazgo cae justo adentro del párrafo resaltado. */
+.reader-hallazgo {
+  background: var(--read-hallazgo-bg);
+  color: var(--read-hallazgo-fg);
+  border-radius: 0.2em;
+  padding: 0 0.12em;
+  font-weight: 600;
 }
 
 /* El relleno es constante, esté o no resaltado el párrafo. Cuando aparecía solo

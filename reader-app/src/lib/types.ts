@@ -70,6 +70,14 @@ export type ReadingSettings = {
   textAlign: "left" | "justify";
   focusMode: boolean;
   focusDimOpacity: number; // 0..1, opacity applied to non-active paragraphs
+  /**
+   * Velocidad del desplazamiento automático, en renglones por minuto.
+   *
+   * Va en renglones y no en píxeles a propósito: ella cambia el tamaño de letra
+   * todo el tiempo, y una velocidad en píxeles que a 22 px es cómoda a 40 px se
+   * siente el doble de rápida. En renglones, la sensación no cambia.
+   */
+  autoScrollRenglones: number;
 };
 
 export type ProfileStatus = "pending" | "approved" | "rejected";
@@ -93,4 +101,5 @@ export const DEFAULT_SETTINGS: ReadingSettings = {
   textAlign: "left",
   focusMode: false,
   focusDimOpacity: 0.35,
+  autoScrollRenglones: 12,
 };

@@ -31,7 +31,13 @@ export function PanelIndice({
   libro: ParsedBook;
   capituloActual: number;
   marcadores: Marcador[];
-  onIr: (chapterIndex: number, paragraphIndex?: number) => void;
+  /**
+   * `termino` viaja solo desde la búsqueda, para que el lector pueda marcar en
+   * el texto la palabra que se buscó. Saltar al párrafo correcto y dejar el
+   * hallazgo sin señalar era media ayuda: encontrarlo adentro del párrafo es
+   * justo lo que cuesta.
+   */
+  onIr: (chapterIndex: number, paragraphIndex?: number, termino?: string) => void;
   onBorrarMarcador: (creadoEn: number) => void;
   onCerrar: () => void;
 }) {
@@ -200,7 +206,7 @@ export function PanelIndice({
                 {resultados.map((r) => (
                   <li key={`${r.chapterIndex}-${r.paragraphIndex}`}>
                     <button
-                      onClick={() => onIr(r.chapterIndex, r.paragraphIndex)}
+                      onClick={() => onIr(r.chapterIndex, r.paragraphIndex, consulta.trim())}
                       className={fila}
                     >
                       <span className="text-xs text-[var(--foreground)]/50">{r.chapterTitle}</span>
