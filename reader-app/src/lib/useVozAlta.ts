@@ -255,6 +255,32 @@ export function useVozAlta({
     return () => clearInterval(reloj);
   }, [finProgramado, detener]);
 
+  /**
+   * Leer una frase suelta con una voz, para poder compararlas.
+   *
+   * Elegir voz a ciegas de una lista de nombres no sirve: "Mónica" y "Paulina"
+   * no dicen nada hasta que se las escucha. Y probarlas arrancando un capítulo
+   * entero cada vez es tan incómodo que en la práctica nadie cambia la voz que
+   * viene puesta.
+   */
+  const probar = useCallback(
+    (voiceURI?: string) => {
+      if (!disponible) return;
+      tandaRef.current++;
+      window.speechSynthesis.cancel();
+
+      const v = voiceURI ? voces.find((x) => x.voiceURI === voiceURI) ?? null : vozRef.current;
+      const locucion = new SpeechSynthesisUtterance(
+        "Así suena esta voz leyendo un renglón del libro."
+      );
+      locucion.lang = v?.lang ?? "es-ES";
+      if (v) locucion.voice = v;
+      locucion.rate = velocidad;
+      window.speechSynthesis.speak(locucion);
+    },
+    [disponible, voces, velocidad]
+  );
+
   /** Cambiar de voz, igual que la velocidad, obliga a rearmar la cola. */
   const cambiarVoz = useCallback(
     (voiceURI: string) => {
@@ -283,6 +309,7 @@ export function useVozAlta({
     detener,
     cambiarVelocidad,
     cambiarVoz,
+    probar,
     programarTemporizador,
   };
 }

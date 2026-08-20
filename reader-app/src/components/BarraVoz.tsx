@@ -29,6 +29,7 @@ export function BarraVoz({
   voces,
   vozElegida,
   onVoz,
+  onProbar,
   minutosTemporizador,
   minutosRestantes,
   onTemporizador,
@@ -52,6 +53,8 @@ export function BarraVoz({
   voces: SpeechSynthesisVoice[];
   vozElegida: string;
   onVoz: (voiceURI: string) => void;
+  /** Lee una frase suelta con esa voz, para compararlas sin arrancar un capítulo. */
+  onProbar: (voiceURI: string) => void;
   minutosTemporizador: readonly number[];
   minutosRestantes: number | null;
   onTemporizador: (minutos: number) => void;
@@ -168,6 +171,8 @@ export function BarraVoz({
           voces={voces}
           vozElegida={vozElegida}
           onVoz={onVoz}
+          onProbar={onProbar}
+          puedeProbar={estado === "detenido"}
           minutosTemporizador={minutosTemporizador}
           minutosRestantes={minutosRestantes}
           onTemporizador={onTemporizador}
@@ -180,10 +185,27 @@ export function BarraVoz({
         {barraDesplazamiento}
 
         {!vozDisponible ? null : !activo ? (
-          <button onClick={onLeer} className={`${marco} ${boton} gap-2 px-5 font-medium`} style={estiloMarco}>
-            <IconoAltavoz />
-            Escuchar
-          </button>
+          /*
+            El botón de opciones también en reposo. Estaba solo mientras leía, o
+            sea que para cambiar de voz había que arrancar un capítulo primero:
+            elegir voz es justamente lo que se quiere hacer *antes* de ponerse a
+            escuchar, no en el medio.
+          */
+          <div className={marco} style={estiloMarco}>
+            <button onClick={onLeer} className={`${boton} gap-2 px-4 font-medium`}>
+              <IconoAltavoz />
+              Escuchar
+            </button>
+            <button
+              onClick={() => setOpcionesAbiertas(true)}
+              aria-label="Opciones de la voz"
+              className={`${boton} w-12`}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M4 7h16M4 12h16M4 17h10" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
         ) : (
           <div className={marco} style={estiloMarco}>
             {estado === "leyendo" ? (
@@ -235,6 +257,8 @@ function OpcionesVoz({
   voces,
   vozElegida,
   onVoz,
+  onProbar,
+  puedeProbar,
   minutosTemporizador,
   minutosRestantes,
   onTemporizador,
@@ -246,6 +270,8 @@ function OpcionesVoz({
   voces: SpeechSynthesisVoice[];
   vozElegida: string;
   onVoz: (voiceURI: string) => void;
+  onProbar: (voiceURI: string) => void;
+  puedeProbar: boolean;
   minutosTemporizador: readonly number[];
   minutosRestantes: number | null;
   onTemporizador: (minutos: number) => void;
@@ -299,23 +325,45 @@ function OpcionesVoz({
           </div>
         </section>
 
-        {voces.length > 1 && (
+        {voces.length > 0 && (
           <section className="flex flex-col gap-2">
             <label htmlFor="voz-lectura" className="text-sm font-medium text-[var(--foreground)]/70">
               Voz
             </label>
-            <select
-              id="voz-lectura"
-              value={vozElegida}
-              onChange={(e) => onVoz(e.target.value)}
-              className="min-h-12 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-base"
-            >
-              {voces.map((v) => (
-                <option key={v.voiceURI} value={v.voiceURI}>
-                  {v.name}
-                </option>
-              ))}
-            </select>
+            <div className="flex gap-2">
+              <select
+                id="voz-lectura"
+                value={vozElegida}
+                onChange={(e) => onVoz(e.target.value)}
+                className="min-h-12 min-w-0 flex-1 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 text-base"
+              >
+                {voces.map((v) => (
+                  <option key={v.voiceURI} value={v.voiceURI}>
+                    {/* Las voces "en línea" suenan bastante mejor pero dejan de
+                        andar sin internet. Conviene saber cuál es cuál antes de
+                        elegirla para leer en el colectivo. */}
+                    {v.name}
+                    {v.localService ? "" : " (en línea)"}
+                  </option>
+                ))}
+              </select>
+              {/* Probar corta lo que esté sonando, así que mientras lee no se
+                  ofrece: sería un botón que interrumpe el libro sin avisar. */}
+              {puedeProbar && (
+                <button
+                  onClick={() => onProbar(vozElegida)}
+                  className="min-h-12 shrink-0 rounded-xl border border-[var(--border)] px-4 font-medium transition hover:bg-[var(--surface-muted)]"
+                >
+                  Probar
+                </button>
+              )}
+            </div>
+            <p className="text-xs leading-relaxed text-[var(--foreground)]/55">
+              Las voces las pone el teléfono, no la app. En iPhone se bajan mejores desde
+              Ajustes → Accesibilidad → Contenido hablado → Voces → Español; ahí aparecen las
+              versiones «mejorada» o «premium», que suenan bastante más naturales. Después
+              volvé acá y elegila.
+            </p>
           </section>
         )}
 

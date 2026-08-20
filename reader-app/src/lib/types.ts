@@ -101,5 +101,5 @@ export const DEFAULT_SETTINGS: ReadingSettings = {
   textAlign: "left",
   focusMode: false,
   focusDimOpacity: 0.35,
-  autoScrollRenglones: 12,
+  autoScrollRenglones: 18,
 };

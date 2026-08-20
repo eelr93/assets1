@@ -731,6 +731,7 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
           voces={voz.voces}
           vozElegida={voz.vozElegida}
           onVoz={voz.cambiarVoz}
+          onProbar={voz.probar}
           minutosTemporizador={voz.minutosTemporizador}
           minutosRestantes={voz.minutosRestantes}
           onTemporizador={voz.programarTemporizador}
