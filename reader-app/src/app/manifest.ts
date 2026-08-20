@@ -1,5 +1,9 @@
 import type { MetadataRoute } from "next";
 
+// El manifiesto no depende de nada del pedido: es el mismo archivo siempre.
+// Declararlo estático es lo que permite exportar la app como sitio sin servidor.
+export const dynamic = "force-static";
+
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Lectura Accesible",

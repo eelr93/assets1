@@ -6,6 +6,7 @@ import { parseBook } from "@/lib/parsers";
 import { paragraphsToPlainText } from "@/lib/text";
 import type { ParsedBook, StoredBook } from "@/lib/types";
 import { useSettings } from "@/context/SettingsContext";
+import { useAuth } from "@/context/AuthContext";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { Quiz } from "@/components/Quiz";
 
@@ -17,6 +18,7 @@ const FONT_FAMILY: Record<string, string> = {
 
 export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void }) {
   const { settings } = useSettings();
+  const { configured: quizDisponible } = useAuth();
   const [book, setBook] = useState<StoredBook | null>(null);
   const [parsed, setParsed] = useState<ParsedBook | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -262,12 +264,20 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
             );
           })}
 
-          <Quiz
-            key={chapterIndex}
-            bookTitle={book.title}
-            chapterTitle={chapter.title}
-            chapterText={chapterText}
-          />
+          {/*
+            El quiz llama a un servidor propio que verifica la sesión y consume
+            tokens pagos. Sin cuentas configuradas no hay a quién verificar ni
+            con qué pagar, así que el botón no se muestra: es preferible que no
+            exista a que exista y falle.
+          */}
+          {quizDisponible && (
+            <Quiz
+              key={chapterIndex}
+              bookTitle={book.title}
+              chapterTitle={chapter.title}
+              chapterText={chapterText}
+            />
+          )}
 
           <nav className="mt-10 flex items-center justify-between gap-3 border-t pt-6" style={{ borderColor: "color-mix(in srgb, var(--read-fg) 15%, transparent)" }}>
             <button

@@ -76,6 +76,32 @@ quizzes con IA, ya que eso consume tokens pagos).
   (`is_admin()`) en la base para evitar recursión infinita en las políticas
   RLS de Supabase — ver `supabase/migration.sql`.
 
+## Ya está publicada, en modo solo lector (20/8/2026)
+
+**https://lectura-accesible.pages.dev** — Cloudflare Pages, gratis, sin tarjeta.
+
+Es el lector completo: abrir EPUB/PDF/TXT, tamaño de letra, tipografía,
+espaciados, temas (incluido alto contraste y nocturno), modo enfoque y progreso
+por libro. Se instala desde Chrome como app y anda sin internet.
+
+**Sin cuentas y sin quiz**, porque la API de Anthropic se paga aparte de la
+suscripción de claude.ai y todavía no hay saldo cargado. Eso no obligó a
+recortar nada: la app **se adapta a lo que encuentra en su entorno**. Sin las
+variables de Supabase no hay login, ni barra de sesión, ni botón de quiz; con
+ellas, vuelve a ser el producto completo. Un solo código, dos comandos:
+
+```bash
+npm run build:lector   # sitio estático → Cloudflare Pages (lo que está online)
+npm run build          # app completa → Vercel (cuando haya claves y saldo)
+```
+
+Detalle de los dos caminos en `SETUP.md`, sección 6.
+
+**Lo que nadie verificó todavía:** la app no se abrió en un navegador. Está
+comprobado que el servidor entrega los archivos correctos, no que un EPUB abra
+bien ni que los ajustes resulten cómodos para quien fue operado de cataratas —
+que es justamente para quien se hizo. Esa prueba sigue pendiente.
+
 ## Estado actual de la puesta en marcha (Supabase)
 
 - Proyecto de Supabase creado: `https://etsakkscgjolgtetxzxm.supabase.co`.

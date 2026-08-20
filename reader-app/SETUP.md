@@ -42,7 +42,48 @@ update public.profiles set is_admin = true, status = 'approved' where email = 't
 
 ## 6. Publicar la app (hosting)
 
-Desplegá el proyecto en [Vercel](https://vercel.com) (gratis para este uso, se conecta directo al repo de GitHub) y cargá ahí las mismas variables de entorno del paso 3, en **Project Settings > Environment Variables**.
+Hay **dos formas de publicarla, con el mismo código**. Cuál usás depende de si
+querés solo el lector o también el quiz con IA.
+
+### 6.a — Solo lector (sin servidor, sin cuentas, sin costo)
+
+```bash
+npm run build:lector      # genera out/
+wrangler pages deploy out --project-name lectura-accesible --branch main --commit-dirty=true
+```
+
+Publicado en **https://lectura-accesible.pages.dev** (Cloudflare Pages).
+
+Esto sale como sitio estático puro: no hay servidor, no hace falta Supabase ni
+la clave de Anthropic, y no cuesta nada. Se puede instalar desde Chrome como
+app y funciona sin internet.
+
+**Por qué alcanza:** el lector entero ocurre en el teléfono. Los libros se
+guardan en IndexedDB, los parsers de EPUB, PDF y TXT corren en el navegador y
+los ajustes van en `localStorage`. Nada de eso necesita backend. Lo único que sí
+lo necesita es el quiz, y en este modo no se publica — `/api/quiz` devuelve 404.
+
+**La app se adapta sola.** Sin las variables de Supabase no muestra login, ni
+barra de sesión, ni el botón del quiz (ver `AuthGate.tsx`). No es una versión
+recortada ni una rama aparte: es el mismo código leyendo su entorno.
+
+### 6.b — App completa (con cuentas y quiz)
+
+```bash
+npm run build
+```
+
+Desplegá en [Vercel](https://vercel.com) — es de los mismos que hacen Next.js,
+así que no hay nada que configurar — y cargá ahí las variables del paso 3, en
+**Project Settings > Environment Variables**.
+
+**No sirve Cloudflare Pages para este modo**: la ruta `/api/quiz` necesita
+correr en un servidor, y Cloudflare exigiría el adaptador `@opennextjs/cloudflare`,
+que a esta altura no cubre Next 16 con garantías. Firebase Hosting tampoco:
+el SSR de Next pide Cloud Functions, o sea plan Blaze, o sea tarjeta.
+
+Para pasar de 6.a a 6.b no hay que reescribir nada — se cargan las claves y se
+publica con el otro comando.
 
 ## 7. Subir a Play Store
 
