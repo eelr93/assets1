@@ -5,6 +5,7 @@ import {
   borrarVoz,
   descargarVoz,
   idsDescargados,
+  REGIONES_VOZ,
   VOCES_NATURALES,
   vozNaturalSoportada,
   type IdVozNatural,
@@ -14,7 +15,7 @@ import {
  * Elegir y descargar una voz neuronal.
  *
  * Estas voces suenan bastante más humanas que las del sistema, pero hay que
- * bajarlas: son entre 28 y 77 MB cada una. Por eso acá se dice el peso antes de
+ * bajarlas: son entre 21 y 114 MB cada una. Por eso acá se dice el peso antes de
  * tocar nada, la descarga muestra en qué va, y se puede borrar lo bajado sin
  * tener que buscar en los ajustes del teléfono.
  *
@@ -100,75 +101,99 @@ export function PanelVozNatural({
         del sistema.
       </p>
 
-      <ul className="flex flex-col gap-2">
-        {VOCES_NATURALES.map((v) => {
-          const bajada = descargadas.includes(v.id);
-          const enUso = elegida === v.id;
-          const bajandoEsta = bajando?.id === v.id;
+      {/*
+        Agrupadas por región y, cuando hay ancho, en dos columnas. Son siete
+        voces: en una sola columna angosta la lista se vuelve un rollo largo en
+        el que las de España tapan a las de acá, que son las que más se van a
+        usar. En el teléfono queda de a una, que es lo único que entra.
+      */}
+      {REGIONES_VOZ.map((region) => (
+        <div key={region} className="flex flex-col gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/45">
+            {region}
+          </h4>
+          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {VOCES_NATURALES.filter((v) => v.region === region).map((v) => {
+              const bajada = descargadas.includes(v.id);
+              const enUso = elegida === v.id;
+              const bajandoEsta = bajando?.id === v.id;
 
-          return (
-            <li
-              key={v.id}
-              className={`flex flex-col gap-2 rounded-xl border p-3 ${
-                enUso ? "border-[var(--accent)]" : "border-[var(--border)]"
-              }`}
-            >
-              <div className="flex items-baseline justify-between gap-2">
-                <span className="font-medium">{v.nombre}</span>
-                {enUso && (
-                  <span className="shrink-0 text-xs font-semibold text-[var(--accent)]">En uso</span>
-                )}
-              </div>
-              <span className="text-xs leading-relaxed text-[var(--foreground)]/55">{v.detalle}</span>
-
-              {bajandoEsta ? (
-                <div className="flex flex-col gap-1">
-                  <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-                    <div
-                      className="h-full rounded-full bg-[var(--accent)] transition-[width]"
-                      style={{ width: `${bajando.porcentaje}%` }}
-                    />
+              return (
+                <li
+                  key={v.id}
+                  className={`flex flex-col gap-2 rounded-xl border p-3 ${
+                    enUso ? "border-[var(--accent)]" : "border-[var(--border)]"
+                  }`}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="min-w-0 font-medium">{v.nombre}</span>
+                    {enUso ? (
+                      <span className="shrink-0 text-xs font-semibold text-[var(--accent)]">
+                        En uso
+                      </span>
+                    ) : (
+                      <span className="shrink-0 text-xs tabular-nums text-[var(--foreground)]/45">
+                        {v.megas} MB
+                      </span>
+                    )}
                   </div>
-                  <span className="text-xs text-[var(--foreground)]/55">
-                    Descargando… {bajando.porcentaje}% de {v.megas} MB
+                  <span className="flex-1 text-xs leading-relaxed text-[var(--foreground)]/55">
+                    {v.detalle}
                   </span>
-                </div>
-              ) : (
-                <div className="flex gap-2">
-                  {!bajada ? (
-                    <button
-                      onClick={() => bajar(v.id)}
-                      disabled={bajando !== null}
-                      className="min-h-11 flex-1 rounded-lg border border-[var(--border)] px-3 text-sm font-medium transition hover:bg-[var(--surface-muted)] disabled:opacity-40"
-                    >
-                      Descargar {v.megas} MB
-                    </button>
+
+                  {bajandoEsta ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+                        <div
+                          className="h-full rounded-full bg-[var(--accent)] transition-[width]"
+                          style={{ width: `${bajando.porcentaje}%` }}
+                        />
+                      </div>
+                      <span className="text-xs text-[var(--foreground)]/55">
+                        Descargando… {bajando.porcentaje}% de {v.megas} MB
+                      </span>
+                    </div>
                   ) : (
-                    <>
-                      <button
-                        onClick={() => onElegir(enUso ? null : v.id)}
-                        className={`min-h-11 flex-1 rounded-lg border px-3 text-sm font-medium transition ${
-                          enUso
-                            ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
-                            : "border-[var(--border)] hover:bg-[var(--surface-muted)]"
-                        }`}
-                      >
-                        {enUso ? "Dejar de usarla" : "Usar esta voz"}
-                      </button>
-                      <button
-                        onClick={() => borrar(v.id)}
-                        className="min-h-11 rounded-lg border border-[var(--border)] px-3 text-sm transition hover:bg-[var(--surface-muted)]"
-                      >
-                        Borrar
-                      </button>
-                    </>
+                    // Los botones se envuelven: "Dejar de usarla" y "Borrar" no
+                    // entran juntos en una columna de teléfono angosto, y
+                    // apretados terminan en dos renglones de texto cortado.
+                    <div className="flex flex-wrap gap-2">
+                      {!bajada ? (
+                        <button
+                          onClick={() => bajar(v.id)}
+                          disabled={bajando !== null}
+                          className="min-h-11 flex-1 rounded-lg border border-[var(--border)] px-3 text-sm font-medium transition hover:bg-[var(--surface-muted)] disabled:opacity-40"
+                        >
+                          Descargar
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => onElegir(enUso ? null : v.id)}
+                            className={`min-h-11 flex-1 basis-28 rounded-lg border px-3 text-sm font-medium transition ${
+                              enUso
+                                ? "border-[var(--accent)] bg-[var(--accent)] text-[var(--accent-foreground)]"
+                                : "border-[var(--border)] hover:bg-[var(--surface-muted)]"
+                            }`}
+                          >
+                            {enUso ? "Dejar de usarla" : "Usar esta voz"}
+                          </button>
+                          <button
+                            onClick={() => borrar(v.id)}
+                            className="min-h-11 rounded-lg border border-[var(--border)] px-3 text-sm transition hover:bg-[var(--surface-muted)]"
+                          >
+                            Borrar
+                          </button>
+                        </>
+                      )}
+                    </div>
                   )}
-                </div>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      ))}
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </section>

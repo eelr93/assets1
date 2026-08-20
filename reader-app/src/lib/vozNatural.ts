@@ -1,6 +1,5 @@
 "use client";
 
-import type { VoiceId } from "@diffusionstudio/vits-web";
 import type { PedidoVozNatural, RespuestaVozNatural } from "./vozNatural.worker";
 
 /**
@@ -15,7 +14,7 @@ import type { PedidoVozNatural, RespuestaVozNatural } from "./vozNatural.worker"
  *
  * No es magia y no está garantizado que ande bien en todos los teléfonos:
  *
- * - Son entre 25 y 110 MB de descarga por voz, una sola vez.
+ * - Son entre 21 y 114 MB de descarga por voz, una sola vez.
  * - Generar cada párrafo lleva su tiempo. Se genera el siguiente mientras suena
  *   el actual, pero en un teléfono viejo la voz puede quedarse esperando.
  * - En iPhone el navegador es más estricto con la memoria y puede cortar.
@@ -27,50 +26,77 @@ import type { PedidoVozNatural, RespuestaVozNatural } from "./vozNatural.worker"
  */
 
 /**
- * Las voces que se ofrecen, elegidas a mano del catálogo completo.
+ * Las voces que se ofrecen, elegidas a mano del catálogo de Piper.
  *
- * Del catálogo del paquete se dejan afuera las de calidad baja, que suenan peor
- * que la voz del sistema y no justifican ni la descarga ni la espera: si va a
- * costar 60 MB tiene que sonar mejor, si no es todo pérdida.
+ * Van primero las latinoamericanas: es el acento de casa y es lo que menos
+ * cansa escuchar durante horas.
  *
- * No hay voz argentina: existe una (`es_AR-daniela`) en el repositorio original
- * de Piper, pero no está en el catálogo que publica este paquete. La mexicana es
- * la más cercana en oído rioplatense.
+ * **En español no hay más que esto.** Piper tiene voz argentina y mexicanas; no
+ * existen colombiana, chilena, peruana ni ninguna otra. No es una decisión de
+ * acá, es todo lo que hay entrenado.
+ *
+ * Se dejan afuera las de calidad baja del catálogo (`mls_*-low`), que suenan
+ * peor que la voz del sistema: si va a costar 60 MB tiene que sonar mejor, si
+ * no es pérdida pura. La única "liviana" que queda es la mexicana chica, que
+ * está por los teléfonos que no dan abasto con las otras.
  */
 export const VOCES_NATURALES = [
   {
-    id: "es_MX-claude-high" as VoiceId,
+    id: "es_AR-daniela-high",
+    nombre: "Daniela — Argentina",
+    region: "Latinoamérica",
+    detalle:
+      "Acento rioplatense. La más pesada y la que más tarda en generar; si se entrecorta, probá una de las de abajo.",
+    megas: 114,
+  },
+  {
+    id: "es_MX-claude-high",
     nombre: "Claudia — México",
-    detalle: "La más natural. 63 MB, y la que más tarda en generar.",
+    region: "Latinoamérica",
+    detalle: "Muy natural y bastante más liviana que la argentina.",
     megas: 63,
   },
   {
-    id: "es_ES-davefx-medium" as VoiceId,
-    nombre: "David — España",
-    detalle: "Voz masculina, equilibrada. 63 MB.",
+    id: "es_MX-ald-medium",
+    nombre: "Alicia — México",
+    region: "Latinoamérica",
+    detalle: "Equilibrada: suena bien y le pide menos al teléfono.",
     megas: 63,
   },
   {
-    id: "es_ES-sharvard-medium" as VoiceId,
+    id: "es_MX-ald-x_low",
+    nombre: "Alicia — México (liviana)",
+    region: "Latinoamérica",
+    detalle: "Suena peor, pero es la más rápida de todas. Para teléfonos justos.",
+    megas: 21,
+  },
+  {
+    id: "es_ES-sharvard-medium",
     nombre: "Sara — España",
-    detalle: "Voz femenina, dicción muy clara. 77 MB.",
+    region: "España",
+    detalle: "Voz femenina, dicción muy clara.",
     megas: 77,
   },
   {
-    id: "es_MX-ald-medium" as VoiceId,
-    nombre: "Alicia — México",
-    detalle: "Más liviana de generar que las otras. 63 MB.",
+    id: "es_ES-davefx-medium",
+    nombre: "David — España",
+    region: "España",
+    detalle: "Voz masculina, equilibrada.",
     megas: 63,
   },
   {
-    id: "es_ES-carlfm-x_low" as VoiceId,
+    id: "es_ES-carlfm-x_low",
     nombre: "Carlos — España (liviana)",
-    detalle: "Suena peor pero pesa 28 MB y genera rápido. Para teléfonos justos.",
+    region: "España",
+    detalle: "Suena peor pero pesa poco y genera rápido.",
     megas: 28,
   },
 ] as const;
 
 export type IdVozNatural = (typeof VOCES_NATURALES)[number]["id"];
+
+/** Las regiones en el orden en que se muestran. */
+export const REGIONES_VOZ = ["Latinoamérica", "España"] as const;
 
 let hilo: Worker | null = null;
 let proximoId = 1;
@@ -178,15 +204,15 @@ export function vozNaturalSoportada(): boolean {
   );
 }
 
-export const descargarVoz = (voz: VoiceId, onAvance?: (cargado: number, total: number) => void) =>
+export const descargarVoz = (voz: IdVozNatural, onAvance?: (cargado: number, total: number) => void) =>
   pedir<void>({ tipo: "descargar", voz }, onAvance);
 
-export const sintetizar = (voz: VoiceId, texto: string) =>
+export const sintetizar = (voz: IdVozNatural, texto: string) =>
   pedir<Blob>({ tipo: "sintetizar", voz, texto });
 
 export const vocesGuardadas = () => pedir<string[]>({ tipo: "guardadas" });
 
-export const borrarVoz = (voz: VoiceId) => pedir<void>({ tipo: "borrar", voz });
+export const borrarVoz = (voz: IdVozNatural) => pedir<void>({ tipo: "borrar", voz });
 
 /**
  * Qué voces del catálogo ya están bajadas.

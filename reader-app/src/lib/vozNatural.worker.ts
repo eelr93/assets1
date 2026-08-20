@@ -21,11 +21,20 @@
 
 import type { VoiceId } from "@diffusionstudio/vits-web";
 
+/**
+ * El identificador de una voz.
+ *
+ * Es `string` y no el `VoiceId` de la biblioteca porque acá se agregan voces
+ * que su catálogo no lista (ver `VOCES_AGREGADAS`). En las llamadas se afirma
+ * el tipo: para la biblioteca son entradas válidas del mapa igual que las suyas.
+ */
+type IdVoz = string;
+
 export type PedidoVozNatural =
-  | { id: number; tipo: "descargar"; voz: VoiceId }
-  | { id: number; tipo: "sintetizar"; voz: VoiceId; texto: string }
+  | { id: number; tipo: "descargar"; voz: IdVoz }
+  | { id: number; tipo: "sintetizar"; voz: IdVoz; texto: string }
   | { id: number; tipo: "guardadas" }
-  | { id: number; tipo: "borrar"; voz: VoiceId };
+  | { id: number; tipo: "borrar"; voz: IdVoz };
 
 export type RespuestaVozNatural =
   | { id: number; tipo: "listo"; datos?: unknown }
@@ -36,6 +45,35 @@ export type RespuestaVozNatural =
 
 const alPrincipal = (m: RespuestaVozNatural) => self.postMessage(m);
 
+/**
+ * Voces que la biblioteca no trae en su catálogo, agregadas a mano.
+ *
+ * La biblioteca baja los modelos de un espejo (`diffusionstudio/piper-voices`)
+ * que está incompleto: no tiene la voz argentina ni la mexicana liviana, que sí
+ * existen en el repositorio original de Piper (`rhasspy/piper-voices`).
+ *
+ * ── El truco de los `..`, y por qué es legítimo ─────────────────────────────
+ *
+ * La biblioteca arma la dirección como `${BASE}/${ruta}`, y `BASE` apunta al
+ * espejo y no se puede cambiar: es una constante importada. Pero la ruta sí se
+ * puede, porque `PATH_MAP` está exportado y es un objeto común.
+ *
+ * Entonces la ruta sube cuatro niveles y baja al repositorio original. No es un
+ * parche sucio sobre una casualidad: quitar los `..` es parte de cómo se
+ * normaliza cualquier dirección web (RFC 3986), lo hace el propio navegador
+ * antes de pedir nada, y el resultado está verificado contra el servidor.
+ *
+ * Lo demás sigue funcionando solo: la biblioteca guarda y busca los archivos
+ * por su nombre suelto, que no cambia, y para saber si una voz está bajada mira
+ * este mismo mapa.
+ */
+const AL_REPOSITORIO_ORIGINAL = "../../../../rhasspy/piper-voices/resolve/main";
+
+const VOCES_AGREGADAS: Record<string, string> = {
+  "es_AR-daniela-high": `${AL_REPOSITORIO_ORIGINAL}/es/es_AR/daniela/high/es_AR-daniela-high.onnx`,
+  "es_MX-ald-x_low": `${AL_REPOSITORIO_ORIGINAL}/es/es_MX/ald/x_low/es_MX-ald-x_low.onnx`,
+};
+
 self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
   const pedido = e.data;
   try {
@@ -43,17 +81,18 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
     // recién acá, la primera vez que hace falta: quien no use la voz natural no
     // paga nada por que exista.
     const tts = await import("@diffusionstudio/vits-web");
+    Object.assign(tts.PATH_MAP, VOCES_AGREGADAS);
 
     switch (pedido.tipo) {
       case "descargar":
-        await tts.download(pedido.voz, (p) =>
+        await tts.download(pedido.voz as VoiceId, (p) =>
           alPrincipal({ id: pedido.id, tipo: "avance", cargado: p.loaded, total: p.total })
         );
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;
 
       case "sintetizar": {
-        const wav = await tts.predict({ text: pedido.texto, voiceId: pedido.voz });
+        const wav = await tts.predict({ text: pedido.texto, voiceId: pedido.voz as VoiceId });
         alPrincipal({ id: pedido.id, tipo: "audio", wav });
         break;
       }
@@ -65,7 +104,7 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
       }
 
       case "borrar":
-        await tts.remove(pedido.voz);
+        await tts.remove(pedido.voz as VoiceId);
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;
     }

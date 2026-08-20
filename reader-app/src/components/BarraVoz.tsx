@@ -307,8 +307,15 @@ function OpcionesVoz({
         if (e.target === e.currentTarget) onCerrar();
       }}
     >
-      <div className="flex w-full max-w-md flex-col gap-5 rounded-t-2xl bg-[var(--background)] p-5 text-[var(--foreground)] shadow-2xl sm:rounded-2xl">
-        <div className="flex items-center justify-between">
+      {/*
+        El panel tiene altura tope y el contenido va adentro de una zona que se
+        desplaza. Sin eso, con las siete voces la hoja crecía más que la
+        pantalla: los botones de abajo quedaban fuera y no había forma de
+        llegar, porque el fondo tampoco desplaza. En el teléfono se pega abajo,
+        de donde sale; en pantallas anchas se centra y se ensancha.
+      */}
+      <div className="flex max-h-[88vh] w-full max-w-md flex-col rounded-t-2xl bg-[var(--background)] text-[var(--foreground)] shadow-2xl sm:max-h-[85vh] sm:max-w-xl sm:rounded-2xl">
+        <div className="flex shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-3">
           <h2 className="text-lg font-semibold">Voz</h2>
           <button
             onClick={onCerrar}
@@ -321,6 +328,7 @@ function OpcionesVoz({
           </button>
         </div>
 
+        <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
         {/* Tocar un párrafo para que la voz siga desde ahí no se descubre solo.
             El aviso va acá, que es donde se entra a buscar cosas de la voz. */}
         <p className="rounded-xl bg-[var(--surface-muted)] px-3 py-2.5 text-sm leading-relaxed text-[var(--foreground)]/75">
@@ -407,6 +415,7 @@ function OpcionesVoz({
             Para escuchar hasta quedarse dormida sin que el teléfono siga hablando toda la noche.
           </p>
         </section>
+        </div>
       </div>
     </div>
   );

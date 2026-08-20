@@ -9,4 +9,5 @@
  *
  * Ver `next.config.ts`.
  */
-export default {};
+const moduloVacio = {};
+export default moduloVacio;
