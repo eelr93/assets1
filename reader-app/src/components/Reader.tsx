@@ -503,8 +503,20 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
             textAlign: settings.textAlign,
           }}
         >
+          {/*
+            El resaltado se pinta con el modo enfoque encendido **o mientras la
+            voz está leyendo**. Antes dependía solo del modo enfoque, que viene
+            apagado de fábrica: al tocar "Escuchar" la voz avanzaba de párrafo
+            pero no se veía nada, y seguir la lectura con la vista era imposible
+            — que es justamente para lo que sirve.
+
+            El atenuado del resto sigue atado al modo enfoque nada más. Apagar
+            media pantalla sin que nadie lo haya pedido es un cambio brusco;
+            marcar dónde va la voz, no.
+          */}
           {chapter.paragraphs.map((p, i) => {
             const isActive = i === activeIndex;
+            const resaltar = isActive && (settings.focusMode || leyendo);
             const dim = settings.focusMode && !isActive;
             if (p.kind === "image") {
               return (
@@ -532,13 +544,10 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
                 onClick={settings.focusMode ? () => enfocarParrafo(i) : undefined}
                 className={`reader-paragraph rounded-md ${p.kind === "heading" ? "mb-4 mt-8 font-bold" : "mb-4"} ${
                   settings.focusMode ? "cursor-pointer" : ""
-                }`}
+                } ${resaltar ? "reader-paragraph--activo" : ""}`}
                 style={{
-                  background: isActive && settings.focusMode ? "var(--read-paragraph-bg-active)" : "transparent",
+                  background: resaltar ? "var(--read-paragraph-bg-active)" : "transparent",
                   opacity: dim ? 1 - settings.focusDimOpacity : 1,
-                  padding: isActive && settings.focusMode ? "0.35em 0.5em" : undefined,
-                  marginLeft: isActive && settings.focusMode ? "-0.5em" : undefined,
-                  marginRight: isActive && settings.focusMode ? "-0.5em" : undefined,
                   // Sin esto, iOS espera 300 ms por si el toque es un doble
                   // toque para hacer zoom, y el resaltado llega tarde.
                   touchAction: settings.focusMode ? "manipulation" : undefined,
