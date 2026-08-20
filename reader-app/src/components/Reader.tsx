@@ -99,6 +99,13 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     leyendoRef.current = leyendo;
   }, [leyendo]);
 
+  // Ídem para el modo enfoque: el efecto necesita saberlo sin volver a montarse.
+  const enfoqueRef = useRef(false);
+  useEffect(() => {
+    enfoqueRef.current = settings.focusMode;
+  }, [settings.focusMode]);
+
+
   // Con la voz andando la pantalla no se apaga; leyendo con los ojos tampoco,
   // porque pasar de párrafo no cuenta como actividad para el sistema.
   usePantallaEncendida(true);
@@ -136,6 +143,28 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
       });
     },
     [bookId, chapter, chapterIndex, parsed, totalChapters]
+  );
+
+  /**
+   * Enfocar el párrafo que se tocó.
+   *
+   * Es la interacción central del modo enfoque y la más directa que hay: se
+   * toca lo que se quiere leer. Reemplaza al resaltado que seguía la posición
+   * de la pantalla, que obligaba a dejar el texto a la altura justa para que
+   * quedara marcado el párrafo correcto.
+   *
+   * No hace nada si hay texto seleccionado: soltar el dedo después de marcar
+   * una frase también dispara un clic, y mover el foco ahí sería un salto que
+   * nadie pidió.
+   */
+  const enfocarParrafo = useCallback(
+    (i: number) => {
+      if (!settings.focusMode) return;
+      if (!window.getSelection()?.isCollapsed) return;
+      setActiveIndex(i);
+      persist(i);
+    },
+    [settings.focusMode, persist]
   );
 
   /**
@@ -181,13 +210,7 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
 
     const computeActive = () => {
       ticking = false;
-      // Con la voz andando manda ella: si no, el desplazamiento automático que
-      // ella misma provoca recalcularía el párrafo activo y el resaltado
-      // empezaría a pelearse consigo mismo.
-      if (leyendoRef.current) return;
-      // Lo mismo cuando el salto lo pidió la persona: el desplazamiento que
-      // provoca ese salto no debe volver a elegir el párrafo.
-      if (Date.now() < saltoManualHasta.current) return;
+
       const containerRect = container.getBoundingClientRect();
       const band = containerRect.top + containerRect.height * 0.3;
       let idx = 0;
@@ -198,10 +221,25 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
         idx = i;
         if (rect.bottom >= band) break;
       }
+
+      // El avance de lectura siempre sigue al desplazamiento: aunque el
+      // resaltado no se mueva, si ella bajó por el capítulo y cierra el libro,
+      // tiene que volver donde estaba mirando.
       lastIndex = idx;
-      setActiveIndex(idx);
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => persist(idx), 700);
+
+      // El resaltado, en cambio, no lo mueve el desplazamiento cuando el modo
+      // enfoque está encendido: ahí lo elige ella tocando el párrafo. Que se
+      // moviera solo era justamente el problema — se peleaba con el toque y el
+      // párrafo marcado terminaba siendo otro.
+      if (enfoqueRef.current) return;
+      // Con la voz andando manda ella, por el mismo motivo.
+      if (leyendoRef.current) return;
+      // Y tampoco pisa un salto recién pedido, mientras dura su animación.
+      if (Date.now() < saltoManualHasta.current) return;
+
+      setActiveIndex(idx);
     };
 
     const onScroll = () => {
@@ -454,13 +492,22 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
                 ref={(el: HTMLElement | null) => {
                   paragraphRefs.current[i] = el as HTMLDivElement | null;
                 }}
-                className={`reader-paragraph rounded-md ${p.kind === "heading" ? "mb-4 mt-8 font-bold" : "mb-4"}`}
+                // Tocar un párrafo lo enfoca. Es la interacción central del modo
+                // enfoque: se toca lo que se quiere leer, sin apuntarle a nada
+                // chico ni dejar la pantalla en una posición exacta.
+                onClick={settings.focusMode ? () => enfocarParrafo(i) : undefined}
+                className={`reader-paragraph rounded-md ${p.kind === "heading" ? "mb-4 mt-8 font-bold" : "mb-4"} ${
+                  settings.focusMode ? "cursor-pointer" : ""
+                }`}
                 style={{
                   background: isActive && settings.focusMode ? "var(--read-paragraph-bg-active)" : "transparent",
                   opacity: dim ? 1 - settings.focusDimOpacity : 1,
                   padding: isActive && settings.focusMode ? "0.35em 0.5em" : undefined,
                   marginLeft: isActive && settings.focusMode ? "-0.5em" : undefined,
                   marginRight: isActive && settings.focusMode ? "-0.5em" : undefined,
+                  // Sin esto, iOS espera 300 ms por si el toque es un doble
+                  // toque para hacer zoom, y el resaltado llega tarde.
+                  touchAction: settings.focusMode ? "manipulation" : undefined,
                 }}
                 dangerouslySetInnerHTML={{ __html: p.html }}
               />
