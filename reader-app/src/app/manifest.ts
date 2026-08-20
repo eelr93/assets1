@@ -16,18 +16,14 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#2b6cb0",
     lang: "es",
     icons: [
-      {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "any",
-      },
-      {
-        src: "/icon.svg",
-        sizes: "any",
-        type: "image/svg+xml",
-        purpose: "maskable",
-      },
+      { src: "/icon.svg", sizes: "any", type: "image/svg+xml", purpose: "any" },
+      // Android quiere PNG de tamaños concretos para la pantalla de inicio.
+      // "maskable" es el que se recorta al contorno del sistema (círculo,
+      // cuadrado redondeado); sin él, algunos launchers meten el ícono dentro
+      // de un cuadrado blanco.
+      { src: "/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
     ],
   };
 }

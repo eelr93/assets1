@@ -3,11 +3,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { getBook, getBookFile, getProgress, saveProgress } from "@/lib/db";
 import { parseBook } from "@/lib/parsers";
-import { paragraphsToPlainText } from "@/lib/text";
+import { paragraphsToPlainText, paragraphsToSpeakableText } from "@/lib/text";
 import type { ParsedBook, StoredBook } from "@/lib/types";
 import { useSettings } from "@/context/SettingsContext";
 import { useAuth } from "@/context/AuthContext";
+import { useVozAlta } from "@/lib/useVozAlta";
+import { usePantallaEncendida } from "@/lib/usePantallaEncendida";
 import { SettingsPanel } from "@/components/SettingsPanel";
+import { BarraVoz } from "@/components/BarraVoz";
 import { Quiz } from "@/components/Quiz";
 
 const FONT_FAMILY: Record<string, string> = {
@@ -66,6 +69,44 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     [chapter]
   );
 
+  // ── Lectura en voz alta ───────────────────────────────────────────────────
+  const textosParaVoz = useMemo(
+    () => (chapter ? paragraphsToSpeakableText(chapter.paragraphs) : []),
+    [chapter]
+  );
+
+  const voz = useVozAlta({
+    parrafos: textosParaVoz,
+    // Mientras habla, el párrafo activo lo manda la voz y no el desplazamiento:
+    // así el resaltado del modo enfoque acompaña a lo que se está escuchando.
+    onParrafo: (i) => {
+      setActiveIndex(i);
+      paragraphRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+  });
+
+  const leyendo = voz.estado !== "detenido";
+
+  // El efecto del desplazamiento se registra una vez por capítulo y necesita
+  // saber si la voz está andando. Va por ref y no por dependencia a propósito:
+  // agregarlo a las dependencias volvería a montar el efecto en cada play y
+  // pausa, y eso reinicia la posición de lectura.
+  const leyendoRef = useRef(false);
+  useEffect(() => {
+    leyendoRef.current = leyendo;
+  }, [leyendo]);
+
+  // Con la voz andando la pantalla no se apaga; leyendo con los ojos tampoco,
+  // porque pasar de párrafo no cuenta como actividad para el sistema.
+  usePantallaEncendida(true);
+
+  // Cambiar de capítulo con la voz encendida tiene que cortarla: si no, sigue
+  // leyendo el capítulo anterior sobre un texto que ya no está en pantalla.
+  useEffect(() => {
+    voz.detener();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chapterIndex, bookId]);
+
   const persist = useCallback(
     (idx: number) => {
       if (!parsed) return;
@@ -96,6 +137,10 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
 
     const computeActive = () => {
       ticking = false;
+      // Con la voz andando manda ella: si no, el desplazamiento automático que
+      // ella misma provoca recalcularía el párrafo activo y el resaltado
+      // empezaría a pelearse consigo mismo.
+      if (leyendoRef.current) return;
       const containerRect = container.getBoundingClientRect();
       const band = containerRect.top + containerRect.height * 0.3;
       let idx = 0;
@@ -279,29 +324,50 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
             />
           )}
 
-          <nav className="mt-10 flex items-center justify-between gap-3 border-t pt-6" style={{ borderColor: "color-mix(in srgb, var(--read-fg) 15%, transparent)" }}>
+          {/*
+            Botones anchos y apilados en el teléfono. Antes eran tres cosas en
+            una fila: en una pantalla angosta quedaban tan finitos que había que
+            apuntar, que es justo lo que no se le puede pedir a esta usuaria.
+          */}
+          <nav
+            className="mt-12 mb-24 flex flex-col gap-3 border-t pt-6 sm:flex-row sm:items-center sm:justify-between"
+            style={{ borderColor: "color-mix(in srgb, var(--read-fg) 15%, transparent)" }}
+          >
             <button
               onClick={() => goToChapter(chapterIndex - 1)}
               disabled={chapterIndex === 0}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-30"
-              style={{ borderColor: "color-mix(in srgb, var(--read-fg) 25%, transparent)" }}
+              className="min-h-12 rounded-xl border px-5 py-3 font-medium transition disabled:opacity-25 enabled:hover:bg-[color-mix(in_srgb,var(--read-fg)_8%,transparent)]"
+              style={{ borderColor: "color-mix(in srgb, var(--read-fg) 25%, transparent)", fontSize: "0.95rem" }}
             >
               ← Capítulo anterior
             </button>
-            <span className="text-xs opacity-60">
+            <span className="order-first text-center text-sm opacity-60 sm:order-none">
               Capítulo {chapterIndex + 1} de {totalChapters}
             </span>
             <button
               onClick={() => goToChapter(chapterIndex + 1)}
               disabled={chapterIndex === totalChapters - 1}
-              className="rounded-lg border px-4 py-2 text-sm disabled:opacity-30"
-              style={{ borderColor: "color-mix(in srgb, var(--read-fg) 25%, transparent)" }}
+              className="min-h-12 rounded-xl border px-5 py-3 font-medium transition disabled:opacity-25 enabled:hover:bg-[color-mix(in_srgb,var(--read-fg)_8%,transparent)]"
+              style={{ borderColor: "color-mix(in srgb, var(--read-fg) 25%, transparent)", fontSize: "0.95rem" }}
             >
               Capítulo siguiente →
             </button>
           </nav>
         </div>
       </div>
+
+      {voz.disponible && (
+        <BarraVoz
+          estado={voz.estado}
+          velocidad={voz.velocidad}
+          velocidades={voz.velocidades}
+          onLeer={() => voz.comenzar(activeIndex)}
+          onPausar={voz.pausar}
+          onReanudar={voz.reanudar}
+          onDetener={voz.detener}
+          onVelocidad={voz.cambiarVelocidad}
+        />
+      )}
 
       {panelOpen && <SettingsPanel onClose={() => setPanelOpen(false)} />}
     </div>

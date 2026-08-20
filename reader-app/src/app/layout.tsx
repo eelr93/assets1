@@ -30,7 +30,17 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Lectura Accesible",
+    title: "Lectura",
+  },
+  // iOS ignora el manifiesto al agregar a la pantalla de inicio y busca este
+  // PNG. Sin él pone una captura borrosa de la página en lugar del ícono.
+  icons: {
+    icon: [
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
 };
 
