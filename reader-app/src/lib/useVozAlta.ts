@@ -46,6 +46,10 @@ export function useVozAlta({
   const [indice, setIndice] = useState(0);
   const [velocidad, setVelocidad] = useState(1);
 
+  /** Voces en español que ofrece el dispositivo, para poder elegir. */
+  const [voces, setVoces] = useState<SpeechSynthesisVoice[]>([]);
+  const [vozElegida, setVozElegida] = useState<string>("");
+
   const vozRef = useRef<SpeechSynthesisVoice | null>(null);
 
   // Distingue un final natural de uno provocado por `cancel()`, que también
@@ -61,14 +65,22 @@ export function useVozAlta({
     setDisponible(true);
 
     const elegirVoz = () => {
-      const voces = window.speechSynthesis.getVoices();
-      if (voces.length === 0) return;
-      // Preferir una voz en español; si el dispositivo no tiene ninguna, el
-      // navegador usa la suya por defecto y se entiende igual.
-      vozRef.current =
-        voces.find((v) => v.lang.toLowerCase().startsWith("es-ar")) ??
-        voces.find((v) => v.lang.toLowerCase().startsWith("es")) ??
+      const todas = window.speechSynthesis.getVoices();
+      if (todas.length === 0) return;
+
+      // Solo se ofrecen las voces en español: la lista completa de un teléfono
+      // trae decenas de idiomas y elegir entre todas sería peor que no elegir.
+      const enEspanol = todas.filter((v) => v.lang.toLowerCase().startsWith("es"));
+      setVoces(enEspanol);
+
+      // Preferir el español rioplatense; si no está, cualquier español. Sin
+      // ninguno, el navegador usa su voz por defecto y se entiende igual.
+      const preferida =
+        enEspanol.find((v) => v.lang.toLowerCase().startsWith("es-ar")) ??
+        enEspanol[0] ??
         null;
+      vozRef.current = preferida;
+      setVozElegida(preferida?.voiceURI ?? "");
     };
 
     elegirVoz();
@@ -177,16 +189,30 @@ export function useVozAlta({
     [estado, indice, comenzar]
   );
 
+  /** Cambiar de voz, igual que la velocidad, obliga a rearmar la cola. */
+  const cambiarVoz = useCallback(
+    (voiceURI: string) => {
+      const nueva = voces.find((v) => v.voiceURI === voiceURI) ?? null;
+      vozRef.current = nueva;
+      setVozElegida(voiceURI);
+      if (estado === "leyendo") comenzar(indice);
+    },
+    [voces, estado, indice, comenzar]
+  );
+
   return {
     disponible,
     estado,
     indice,
     velocidad,
     velocidades: VELOCIDADES,
+    voces,
+    vozElegida,
     comenzar,
     pausar,
     reanudar,
     detener,
     cambiarVelocidad,
+    cambiarVoz,
   };
 }

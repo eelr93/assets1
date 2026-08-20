@@ -19,6 +19,10 @@ export function BarraVoz({
   onReanudar,
   onDetener,
   onVelocidad,
+  voces,
+  vozElegida,
+  onVoz,
+  navegacionFoco,
 }: {
   estado: EstadoVoz;
   velocidad: number;
@@ -28,11 +32,23 @@ export function BarraVoz({
   onReanudar: () => void;
   onDetener: () => void;
   onVelocidad: (v: number) => void;
+  voces: SpeechSynthesisVoice[];
+  vozElegida: string;
+  onVoz: (voiceURI: string) => void;
+  /**
+   * Solo en modo enfoque: mover el párrafo resaltado sin tener que dejar el
+   * texto a la altura justa. Van en esta misma barra y no como zonas táctiles
+   * sobre el texto porque una zona invisible encima del párrafo impide
+   * seleccionar y confunde: acá se ven, se tocan y no tapan nada.
+   */
+  navegacionFoco?: { anterior: () => void; siguiente: () => void };
 }) {
   const activo = estado !== "detenido";
 
-  const marco =
+  const marcoBase =
     "pointer-events-auto flex items-center gap-1 rounded-full border px-1.5 py-1.5 shadow-lg backdrop-blur";
+
+  const marco = marcoBase;
   const estiloMarco = {
     background: "color-mix(in srgb, var(--read-bg) 88%, transparent)",
     borderColor: "color-mix(in srgb, var(--read-fg) 20%, transparent)",
@@ -40,9 +56,33 @@ export function BarraVoz({
   const boton =
     "flex h-12 items-center justify-center rounded-full transition hover:bg-[color-mix(in_srgb,var(--read-fg)_12%,transparent)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
 
+  const flechasFoco = navegacionFoco && (
+    <div className={marco} style={estiloMarco}>
+      <button
+        onClick={navegacionFoco.anterior}
+        aria-label="Párrafo anterior"
+        className={`${boton} w-12`}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M18 15l-6-6-6 6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <button
+        onClick={navegacionFoco.siguiente}
+        aria-label="Párrafo siguiente"
+        className={`${boton} w-12`}
+      >
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+          <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </div>
+  );
+
   if (!activo) {
     return (
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        {flechasFoco}
         <button
           onClick={onLeer}
           className={`${marco} ${boton} gap-2 px-5 font-medium`}
@@ -56,7 +96,8 @@ export function BarraVoz({
   }
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex justify-center px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-20 flex flex-wrap items-center justify-center gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+      {flechasFoco}
       <div className={marco} style={estiloMarco}>
         {estado === "leyendo" ? (
           <button onClick={onPausar} aria-label="Pausar la lectura" className={`${boton} w-12`}>
@@ -100,6 +141,30 @@ export function BarraVoz({
             </option>
           ))}
         </select>
+
+        {/*
+          Elegir voz solo aparece si el teléfono tiene más de una en español.
+          Con una sola sería un desplegable de un elemento: ruido.
+        */}
+        {voces.length > 1 && (
+          <>
+            <label className="sr-only" htmlFor="voz-lectura">
+              Voz
+            </label>
+            <select
+              id="voz-lectura"
+              value={vozElegida}
+              onChange={(e) => onVoz(e.target.value)}
+              className="h-12 max-w-28 truncate rounded-full bg-transparent px-2 text-sm font-medium"
+            >
+              {voces.map((v) => (
+                <option key={v.voiceURI} value={v.voiceURI} style={{ color: "#111" }}>
+                  {v.name}
+                </option>
+              ))}
+            </select>
+          </>
+        )}
       </div>
     </div>
   );

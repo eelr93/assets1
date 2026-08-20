@@ -1,5 +1,5 @@
 import { createStore, get, set, del, keys, type UseStore } from "idb-keyval";
-import type { ReadingProgress, StoredBook } from "./types";
+import type { Marcador, ReadingProgress, StoredBook } from "./types";
 
 // Each store gets its own database: idb-keyval's createStore only sets up the
 // object store named in that call, so sharing one database name across calls
@@ -7,6 +7,7 @@ import type { ReadingProgress, StoredBook } from "./types";
 const booksStore: UseStore = createStore("accesible-reader-books", "books");
 const filesStore: UseStore = createStore("accesible-reader-files", "files");
 const progressStore: UseStore = createStore("accesible-reader-progress", "progress");
+const marcadoresStore: UseStore = createStore("accesible-reader-marcadores", "marcadores");
 
 export async function saveBook(book: StoredBook, file: Blob): Promise<void> {
   await set(book.id, book, booksStore);
@@ -33,6 +34,22 @@ export async function deleteBook(id: string): Promise<void> {
   await del(id, booksStore);
   await del(id, filesStore);
   await del(id, progressStore);
+  await del(id, marcadoresStore);
+}
+
+/**
+ * Marcadores de un libro.
+ *
+ * Se guardan todos juntos bajo la clave del libro, no uno por clave: son pocos,
+ * siempre se leen completos y así borrar el libro se lleva sus marcadores con
+ * una sola operación.
+ */
+export async function getMarcadores(bookId: string): Promise<Marcador[]> {
+  return (await get<Marcador[]>(bookId, marcadoresStore)) ?? [];
+}
+
+export async function setMarcadores(bookId: string, marcadores: Marcador[]): Promise<void> {
+  await set(bookId, marcadores, marcadoresStore);
 }
 
 export async function saveProgress(progress: ReadingProgress): Promise<void> {

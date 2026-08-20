@@ -40,6 +40,21 @@ export type ReadingProgress = {
   updatedAt: number;
 };
 
+/**
+ * Un punto guardado a propósito, distinto del progreso.
+ *
+ * El progreso es dónde quedó; el marcador es dónde quiso volver. Guarda un
+ * fragmento del texto para que la lista se pueda leer sin abrir el libro:
+ * "capítulo 4, párrafo 12" no le dice nada a nadie.
+ */
+export type Marcador = {
+  chapterIndex: number;
+  paragraphIndex: number;
+  chapterTitle: string;
+  fragmento: string;
+  creadoEn: number;
+};
+
 export type ThemeId = "light" | "sepia" | "dark" | "night" | "contrast";
 
 export type FontId = "accessible" | "reading-serif" | "system";

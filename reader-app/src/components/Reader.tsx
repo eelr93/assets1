@@ -1,16 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getBook, getBookFile, getProgress, saveProgress } from "@/lib/db";
+import { getBook, getBookFile, getMarcadores, getProgress, saveProgress, setMarcadores as guardarMarcadores } from "@/lib/db";
 import { parseBook } from "@/lib/parsers";
 import { paragraphsToPlainText, paragraphsToSpeakableText } from "@/lib/text";
-import type { ParsedBook, StoredBook } from "@/lib/types";
+import type { Marcador, ParsedBook, StoredBook } from "@/lib/types";
 import { useSettings } from "@/context/SettingsContext";
 import { useAuth } from "@/context/AuthContext";
 import { useVozAlta } from "@/lib/useVozAlta";
 import { usePantallaEncendida } from "@/lib/usePantallaEncendida";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { BarraVoz } from "@/components/BarraVoz";
+import { PanelIndice } from "@/components/PanelIndice";
 import { Quiz } from "@/components/Quiz";
 
 const FONT_FAMILY: Record<string, string> = {
@@ -20,7 +21,7 @@ const FONT_FAMILY: Record<string, string> = {
 };
 
 export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void }) {
-  const { settings } = useSettings();
+  const { settings, update } = useSettings();
   const { configured: quizDisponible } = useAuth();
   const [book, setBook] = useState<StoredBook | null>(null);
   const [parsed, setParsed] = useState<ParsedBook | null>(null);
@@ -28,6 +29,8 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
   const [chapterIndex, setChapterIndex] = useState(0);
   const [activeIndex, setActiveIndex] = useState(0);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [indiceOpen, setIndiceOpen] = useState(false);
+  const [marcadores, setMarcadores] = useState<Marcador[]>([]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const paragraphRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -107,6 +110,15 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chapterIndex, bookId]);
 
+  /**
+   * Hasta cuándo ignorar el desplazamiento al elegir el párrafo activo.
+   *
+   * Saltar a un párrafo dispara un scroll suave, y ese scroll haría que el
+   * cálculo por posición eligiera otro párrafo a mitad del recorrido. La
+   * ventana corta deja terminar la animación antes de devolverle el mando.
+   */
+  const saltoManualHasta = useRef(0);
+
   const persist = useCallback(
     (idx: number) => {
       if (!parsed) return;
@@ -126,6 +138,38 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     [bookId, chapter, chapterIndex, parsed, totalChapters]
   );
 
+  /**
+   * Mueve el foco un párrafo, sin obligar a apuntar con el dedo.
+   *
+   * En modo enfoque el párrafo resaltado es el que se está leyendo, y hasta
+   * ahora la única forma de avanzar era desplazar la pantalla con precisión.
+   * Para alguien que no ve bien, eso es justo lo difícil: tocar una zona ancha
+   * es mucho más fácil que dejar el texto a la altura exacta.
+   */
+  const moverFoco = useCallback(
+    (delta: number) => {
+      const total = chapter?.paragraphs.length ?? 0;
+      if (total === 0) return;
+
+      // Se saltean los párrafos vacíos y las imágenes: parar en una imagen sin
+      // texto haría sentir que el botón no hizo nada.
+      let destino = activeIndex + delta;
+      while (destino > 0 && destino < total - 1) {
+        const p = chapter?.paragraphs[destino];
+        if (p && p.kind !== "image" && p.html.replace(/<[^>]*>/g, "").trim()) break;
+        destino += delta;
+      }
+      destino = Math.max(0, Math.min(total - 1, destino));
+      if (destino === activeIndex) return;
+
+      saltoManualHasta.current = Date.now() + 700;
+      setActiveIndex(destino);
+      paragraphRefs.current[destino]?.scrollIntoView({ behavior: "smooth", block: "center" });
+      persist(destino);
+    },
+    [activeIndex, chapter, persist]
+  );
+
   // Scroll tracking: drives both the paragraph-focus highlight and progress saving.
   useEffect(() => {
     const container = scrollRef.current;
@@ -141,6 +185,9 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
       // ella misma provoca recalcularía el párrafo activo y el resaltado
       // empezaría a pelearse consigo mismo.
       if (leyendoRef.current) return;
+      // Lo mismo cuando el salto lo pidió la persona: el desplazamiento que
+      // provoca ese salto no debe volver a elegir el párrafo.
+      if (Date.now() < saltoManualHasta.current) return;
       const containerRect = container.getBoundingClientRect();
       const band = containerRect.top + containerRect.height * 0.3;
       let idx = 0;
@@ -196,6 +243,75 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     setActiveIndex(0);
   };
 
+  // ── Marcadores ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    let cancelado = false;
+    getMarcadores(bookId).then((lista) => {
+      if (!cancelado) setMarcadores(lista);
+    });
+    return () => {
+      cancelado = true;
+    };
+  }, [bookId]);
+
+  const marcadoActual = marcadores.some(
+    (m) => m.chapterIndex === chapterIndex && m.paragraphIndex === activeIndex
+  );
+
+  const alternarMarcador = useCallback(() => {
+    if (!chapter) return;
+
+    const yaEsta = marcadores.find(
+      (m) => m.chapterIndex === chapterIndex && m.paragraphIndex === activeIndex
+    );
+
+    const siguiente = yaEsta
+      ? marcadores.filter((m) => m.creadoEn !== yaEsta.creadoEn)
+      : [
+          {
+            chapterIndex,
+            paragraphIndex: activeIndex,
+            chapterTitle: chapter.title,
+            // Un pedazo del texto para poder reconocer el punto en la lista.
+            fragmento:
+              (chapter.paragraphs[activeIndex]?.html ?? "")
+                .replace(/<[^>]*>/g, " ")
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 140) || "(sin texto)",
+            creadoEn: Date.now(),
+          },
+          ...marcadores,
+        ];
+
+    setMarcadores(siguiente);
+    guardarMarcadores(bookId, siguiente);
+  }, [bookId, chapter, chapterIndex, activeIndex, marcadores]);
+
+  /** Saltar a un punto concreto, desde el índice, un marcador o una búsqueda. */
+  const irA = useCallback(
+    (ci: number, pi?: number) => {
+      setIndiceOpen(false);
+      if (ci !== chapterIndex) setChapterIndex(ci);
+
+      if (pi === undefined) {
+        setActiveIndex(0);
+        return;
+      }
+
+      saltoManualHasta.current = Date.now() + 900;
+      setActiveIndex(pi);
+      // Al cambiar de capítulo los párrafos todavía no están montados: hay que
+      // esperar al render siguiente para poder desplazarse hasta el destino.
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() =>
+          paragraphRefs.current[pi]?.scrollIntoView({ block: "center" })
+        )
+      );
+    },
+    [chapterIndex]
+  );
+
   if (error) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-4 p-8 text-center">
@@ -231,22 +347,64 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
           </svg>
         </button>
 
-        <label className="sr-only" htmlFor="chapter-select">
-          Capítulo
-        </label>
-        <select
-          id="chapter-select"
-          value={chapterIndex}
-          onChange={(e) => goToChapter(Number(e.target.value))}
-          className="min-w-0 flex-1 truncate rounded-md border bg-transparent px-2 py-2 text-sm"
-          style={{ borderColor: "color-mix(in srgb, var(--read-fg) 25%, transparent)" }}
+        {/*
+          El título del capítulo, tocable, abre el índice. Antes acá había un
+          desplegable con todos los capítulos: en un libro largo es una lista
+          diminuta dentro de un control diminuto, y además se comía el espacio
+          de los botones de letra.
+        */}
+        <button
+          onClick={() => setIndiceOpen(true)}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-lg px-2 py-2 text-left transition hover:bg-[color-mix(in_srgb,var(--read-fg)_10%,transparent)]"
         >
-          {parsed.chapters.map((c, i) => (
-            <option key={i} value={i} style={{ color: "#111" }}>
-              {c.title}
-            </option>
-          ))}
-        </select>
+          <span className="min-w-0 flex-1 truncate text-sm">{chapter.title}</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 opacity-60" aria-hidden>
+            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        <button
+          onClick={alternarMarcador}
+          aria-label={marcadoActual ? "Quitar el marcador de este punto" : "Guardar un marcador acá"}
+          aria-pressed={marcadoActual}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full hover:bg-[color-mix(in_srgb,var(--read-fg)_10%,transparent)]"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill={marcadoActual ? "currentColor" : "none"}
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4-7 4V4a1 1 0 0 1 1-1z" strokeLinejoin="round" />
+          </svg>
+        </button>
+
+        {/*
+          Agrandar y achicar la letra sin salir del texto. Estaba solo dentro
+          del panel de ajustes, o sea tres toques: abrir, cambiar, cerrar. Es lo
+          que más se toca cuando la vista se cansa a mitad de página, así que
+          tiene que estar a un toque.
+        */}
+        <div className="flex shrink-0 items-center">
+          <button
+            onClick={() => update({ fontSize: Math.max(14, settings.fontSize - 2) })}
+            disabled={settings.fontSize <= 14}
+            aria-label="Achicar la letra"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[15px] font-bold disabled:opacity-25 enabled:hover:bg-[color-mix(in_srgb,var(--read-fg)_10%,transparent)]"
+          >
+            A−
+          </button>
+          <button
+            onClick={() => update({ fontSize: Math.min(48, settings.fontSize + 2) })}
+            disabled={settings.fontSize >= 48}
+            aria-label="Agrandar la letra"
+            className="flex h-10 w-10 items-center justify-center rounded-full text-[19px] font-bold disabled:opacity-25 enabled:hover:bg-[color-mix(in_srgb,var(--read-fg)_10%,transparent)]"
+          >
+            A+
+          </button>
+        </div>
 
         <button
           onClick={() => setPanelOpen(true)}
@@ -366,6 +524,31 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
           onReanudar={voz.reanudar}
           onDetener={voz.detener}
           onVelocidad={voz.cambiarVelocidad}
+          voces={voz.voces}
+          vozElegida={voz.vozElegida}
+          onVoz={voz.cambiarVoz}
+          // Las flechas de párrafo solo tienen sentido con el resaltado
+          // encendido: sin modo enfoque no hay nada que mover.
+          navegacionFoco={
+            settings.focusMode
+              ? { anterior: () => moverFoco(-1), siguiente: () => moverFoco(1) }
+              : undefined
+          }
+        />
+      )}
+
+      {indiceOpen && (
+        <PanelIndice
+          libro={parsed}
+          capituloActual={chapterIndex}
+          marcadores={marcadores}
+          onIr={irA}
+          onBorrarMarcador={(creadoEn) => {
+            const siguiente = marcadores.filter((m) => m.creadoEn !== creadoEn);
+            setMarcadores(siguiente);
+            guardarMarcadores(bookId, siguiente);
+          }}
+          onCerrar={() => setIndiceOpen(false)}
         />
       )}
 
