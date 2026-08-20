@@ -5,8 +5,15 @@ import { useAuth } from "@/context/AuthContext";
 import { AuthForm } from "@/components/AuthForm";
 import { PendingApproval } from "@/components/PendingApproval";
 
+// Escape hatch for demoing/debugging without going through login. Set
+// NEXT_PUBLIC_DISABLE_AUTH=true in the deployment's env vars to enable, and
+// remove it (or set to anything else) to restore the normal login gate.
+const authDisabled = process.env.NEXT_PUBLIC_DISABLE_AUTH === "true";
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const { configured, loading, user, profile } = useAuth();
+
+  if (authDisabled) return <>{children}</>;
 
   if (!configured) {
     return (
