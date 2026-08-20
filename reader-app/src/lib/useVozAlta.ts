@@ -34,12 +34,24 @@ export type EstadoVoz = "detenido" | "leyendo" | "pausado";
 
 const VELOCIDADES = [0.7, 0.85, 1, 1.15, 1.3] as const;
 
+/** Minutos que ofrece el temporizador. `0` es "sin temporizador". */
+const MINUTOS_TEMPORIZADOR = [0, 15, 30, 45, 60] as const;
+
 export function useVozAlta({
   parrafos,
   onParrafo,
+  onFinDelCapitulo,
 }: {
   parrafos: string[];
   onParrafo?: (indice: number) => void;
+  /**
+   * Se llama cuando la voz terminó el último párrafo por su cuenta.
+   *
+   * No se dispara al detener ni al cambiar de capítulo a mano: solo cuando la
+   * lectura llegó de verdad al final. El lector lo usa para seguir con el
+   * capítulo siguiente sin que haya que tocar nada.
+   */
+  onFinDelCapitulo?: () => void;
 }) {
   const [disponible, setDisponible] = useState(false);
   const [estado, setEstado] = useState<EstadoVoz>("detenido");
@@ -143,6 +155,7 @@ export function useVozAlta({
           locucion.onend = () => {
             if (cancelandoRef.current) return;
             setEstado("detenido");
+            onFinDelCapitulo?.();
           };
         }
 
@@ -151,7 +164,7 @@ export function useVozAlta({
 
       setEstado("leyendo");
     },
-    [disponible, parrafos, velocidad, onParrafo]
+    [disponible, parrafos, velocidad, onParrafo, onFinDelCapitulo]
   );
 
   const pausar = useCallback(() => {
@@ -189,6 +202,42 @@ export function useVozAlta({
     [estado, indice, comenzar]
   );
 
+  // ── Temporizador para dormir ──────────────────────────────────────────────
+
+  /** Momento en que la voz debe callarse, o `null` si no hay temporizador. */
+  const [finProgramado, setFinProgramado] = useState<number | null>(null);
+  const [minutosRestantes, setMinutosRestantes] = useState<number | null>(null);
+
+  const programarTemporizador = useCallback((minutos: number) => {
+    if (minutos > 0) {
+      setFinProgramado(Date.now() + minutos * 60_000);
+      setMinutosRestantes(minutos);
+    } else {
+      setFinProgramado(null);
+      setMinutosRestantes(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (finProgramado === null) return;
+
+    // Se comprueba cada diez segundos y no cada segundo: lo que se muestra son
+    // minutos, y un intervalo lento gasta menos batería en algo pensado
+    // justamente para dejar andando mientras alguien se duerme.
+    const reloj = setInterval(() => {
+      const faltan = finProgramado - Date.now();
+      if (faltan <= 0) {
+        detener();
+        setFinProgramado(null);
+        setMinutosRestantes(null);
+      } else {
+        setMinutosRestantes(Math.ceil(faltan / 60_000));
+      }
+    }, 10_000);
+
+    return () => clearInterval(reloj);
+  }, [finProgramado, detener]);
+
   /** Cambiar de voz, igual que la velocidad, obliga a rearmar la cola. */
   const cambiarVoz = useCallback(
     (voiceURI: string) => {
@@ -208,11 +257,15 @@ export function useVozAlta({
     velocidades: VELOCIDADES,
     voces,
     vozElegida,
+    minutosTemporizador: MINUTOS_TEMPORIZADOR,
+    minutosRestantes,
+    temporizadorActivo: finProgramado !== null,
     comenzar,
     pausar,
     reanudar,
     detener,
     cambiarVelocidad,
     cambiarVoz,
+    programarTemporizador,
   };
 }

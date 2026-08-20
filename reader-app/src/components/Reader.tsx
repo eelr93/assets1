@@ -78,6 +78,16 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     [chapter]
   );
 
+  /**
+   * Marca que la voz debe seguir sola en el capítulo que se está por cargar.
+   *
+   * Hace falta distinguir dos motivos para cambiar de capítulo: si lo cambió
+   * ella, la voz tiene que callarse; si lo terminó la voz, tiene que seguir.
+   * Sin esta marca los dos casos se ven iguales desde el efecto que reacciona
+   * al cambio.
+   */
+  const seguirEnElSiguiente = useRef(false);
+
   const voz = useVozAlta({
     parrafos: textosParaVoz,
     // Mientras habla, el párrafo activo lo manda la voz y no el desplazamiento:
@@ -85,6 +95,15 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
     onParrafo: (i) => {
       setActiveIndex(i);
       paragraphRefs.current[i]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+    // Terminado un capítulo, sigue con el próximo sin que haya que tocar nada.
+    // Es lo que convierte "leer un capítulo en voz alta" en escuchar el libro:
+    // se puede dejar andando y descansar los ojos un rato largo.
+    onFinDelCapitulo: () => {
+      if (chapterIndex >= totalChapters - 1) return;
+      seguirEnElSiguiente.current = true;
+      setChapterIndex(chapterIndex + 1);
+      setActiveIndex(0);
     },
   });
 
@@ -110,12 +129,27 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
   // porque pasar de párrafo no cuenta como actividad para el sistema.
   usePantallaEncendida(true);
 
-  // Cambiar de capítulo con la voz encendida tiene que cortarla: si no, sigue
-  // leyendo el capítulo anterior sobre un texto que ya no está en pantalla.
+  /**
+   * Qué hace la voz al cambiar de capítulo.
+   *
+   * Si el cambio lo pidió ella, la voz se calla: seguir leyendo un texto que ya
+   * no está en pantalla desorienta. Si el cambio lo provocó la propia voz al
+   * terminar, arranca sola desde el principio del capítulo nuevo.
+   *
+   * `textosParaVoz` está en las dependencias porque en el primer render del
+   * capítulo nuevo todavía puede venir vacío: hay que esperar a que el texto
+   * exista para poder encolarlo.
+   */
   useEffect(() => {
+    if (seguirEnElSiguiente.current) {
+      if (textosParaVoz.length === 0) return;
+      seguirEnElSiguiente.current = false;
+      voz.comenzar(0);
+      return;
+    }
     voz.detener();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chapterIndex, bookId]);
+  }, [chapterIndex, bookId, textosParaVoz]);
 
   /**
    * Hasta cuándo ignorar el desplazamiento al elegir el párrafo activo.
@@ -574,6 +608,9 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
           voces={voz.voces}
           vozElegida={voz.vozElegida}
           onVoz={voz.cambiarVoz}
+          minutosTemporizador={voz.minutosTemporizador}
+          minutosRestantes={voz.minutosRestantes}
+          onTemporizador={voz.programarTemporizador}
           // Las flechas de párrafo solo tienen sentido con el resaltado
           // encendido: sin modo enfoque no hay nada que mover.
           navegacionFoco={
