@@ -149,8 +149,13 @@ export function PanelVozNatural({
                           style={{ width: `${bajando.porcentaje}%` }}
                         />
                       </div>
+                      {/* Guardar 60 o 100 MB en el teléfono lleva su rato
+                          después de que la barra llegó al final. Decirlo evita
+                          que parezca que se colgó justo al terminar. */}
                       <span className="text-xs text-[var(--foreground)]/55">
-                        Descargando… {bajando.porcentaje}% de {v.megas} MB
+                        {bajando.porcentaje >= 100
+                          ? "Guardando en el teléfono… puede tardar un momento"
+                          : `Descargando… ${bajando.porcentaje}% de ${v.megas} MB`}
                       </span>
                     </div>
                   ) : (

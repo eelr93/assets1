@@ -252,15 +252,15 @@ export const borrarVoz = (voz: IdVozNatural) => pedir<void>({ tipo: "borrar", vo
 /**
  * Qué voces del catálogo ya están bajadas.
  *
- * La biblioteca devuelve nombres de archivo (`.../es_MX-ald-medium.onnx`), no
- * identificadores, así que se compara por contenido en lugar de por igualdad.
+ * La comparación es exacta: la biblioteca devuelve identificadores, no rutas.
+ * Antes esto miraba si uno contenía al otro, que con nombres como
+ * `es_MX-ald-medium` y `es_MX-ald-x_low` es pedir que en algún momento una se
+ * haga pasar por otra.
  */
 export async function idsDescargados(): Promise<IdVozNatural[]> {
   try {
-    const archivos = await vocesGuardadas();
-    return VOCES_NATURALES.map((v) => v.id).filter((id) =>
-      archivos.some((a) => a.includes(id))
-    ) as IdVozNatural[];
+    const guardadas = await vocesGuardadas();
+    return VOCES_NATURALES.map((v) => v.id).filter((id) => guardadas.includes(id));
   } catch {
     return [];
   }

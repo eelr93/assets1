@@ -43,6 +43,11 @@ const resultado = await build({
   // falta para guardar los modelos, así que no tiene sentido apuntar más abajo.
   target: ["safari16", "chrome110", "firefox115"],
   minify: true,
+  // Sin esto esbuild escapa los acentos y "teléfono" queda como "tel\xE9fono":
+  // el archivo se vuelve ilegible y buscar un texto adentro no encuentra nada.
+  // Cuesta un rato darse cuenta de que el código estaba bien y lo que fallaba
+  // era la búsqueda.
+  charset: "utf8",
   sourcemap: false,
   legalComments: "none",
   alias: {

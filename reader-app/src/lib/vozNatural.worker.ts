@@ -74,6 +74,42 @@ const VOCES_AGREGADAS: Record<string, string> = {
   "es_MX-ald-x_low": `${AL_REPOSITORIO_ORIGINAL}/es/es_MX/ald/x_low/es_MX-ald-x_low.onnx`,
 };
 
+/**
+ * Espera a que la voz esté realmente escrita en el disco.
+ *
+ * Hace falta por un error de la biblioteca. Su `download` es, en esencia:
+ *
+ *     await Promise.all(archivos.map(async (u) => {
+ *       guardar(u, await bajar(u));   // ← `guardar` es async y no lleva await
+ *     }));
+ *
+ * La promesa de la escritura se descarta, así que `download` termina cuando
+ * terminó de **bajar**, no cuando terminó de **guardar**. Con 63 o 114 MB, entre
+ * una cosa y la otra pasa un rato largo.
+ *
+ * El síntoma era que la descarga llegaba al 100 %, y al preguntar enseguida qué
+ * voces había guardadas todavía no figuraba ninguna: la voz recién bajada no
+ * aparecía para elegir. Al reabrir el panel más tarde sí estaba, porque para
+ * entonces la escritura había terminado.
+ *
+ * Se pregunta hasta que aparezca, con un tope: si en un minuto no está, algo
+ * falló de verdad y es mejor decirlo que dejar la espera colgada.
+ */
+async function esperarAQueEsteGuardada(
+  tts: typeof import("@diffusionstudio/vits-web"),
+  voz: IdVoz
+) {
+  const limite = Date.now() + 60_000;
+  while (Date.now() < limite) {
+    // `stored()` se declara devolviendo solo las voces del catálogo propio,
+    // pero devuelve lo que haya en el disco, incluidas las agregadas a mano.
+    const guardadas: string[] = await tts.stored();
+    if (guardadas.includes(voz)) return;
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  throw new Error("La voz se descargó pero no se pudo guardar en el teléfono.");
+}
+
 self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
   const pedido = e.data;
   try {
@@ -88,6 +124,7 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
         await tts.download(pedido.voz as VoiceId, (p) =>
           alPrincipal({ id: pedido.id, tipo: "avance", cargado: p.loaded, total: p.total })
         );
+        await esperarAQueEsteGuardada(tts, pedido.voz);
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;
 
