@@ -240,6 +240,32 @@ async function bajarVoz(
   }
 }
 
+/**
+ * Las generaciones van de a una, en fila.
+ *
+ * `predict` arma un modelo nuevo por llamada, releyendo los veinte megas cada
+ * vez. Dos a la vez es el doble de memoria y el doble de trabajo justo en el
+ * momento en que el teléfono ya está ocupado reproduciendo — y en un teléfono
+ * modesto eso lo tumba.
+ *
+ * Pasa naturalmente: mientras suena un párrafo se pide el siguiente, y si al
+ * terminar el actual el siguiente todavía no está, llega un pedido más. La
+ * caché del lado del lector evita que se pida dos veces lo mismo; esta fila
+ * evita que se solapen pedidos de párrafos distintos.
+ *
+ * Solo se encolan las generaciones. Preguntar qué voces hay guardadas no tiene
+ * por qué esperar a que termine de hablar.
+ */
+let fila: Promise<unknown> = Promise.resolve();
+
+function enFila<T>(trabajo: () => Promise<T>): Promise<T> {
+  // Se encadena tanto en éxito como en error: un fallo no tiene que trabar la
+  // fila para siempre.
+  const proximo = fila.then(trabajo, trabajo);
+  fila = proximo.catch(() => {});
+  return proximo;
+}
+
 self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
   const pedido = e.data;
   const avisar = (cargado: number, total: number) =>
@@ -266,7 +292,9 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
         break;
 
       case "sintetizar": {
-        const wav = await tts.predict({ text: pedido.texto, voiceId: pedido.voz as VoiceId });
+        const wav = await enFila(() =>
+          tts.predict({ text: pedido.texto, voiceId: pedido.voz as VoiceId })
+        );
         alPrincipal({ id: pedido.id, tipo: "audio", wav });
         break;
       }

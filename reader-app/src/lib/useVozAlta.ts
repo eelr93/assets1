@@ -158,13 +158,16 @@ export function useVozAlta({
    * puede pesar más de un mega, y un capítulo entero llenaría la memoria del
    * teléfono a cambio de nada, porque nadie vuelve atrás treinta párrafos.
    */
-  const audiosRef = useRef<Map<number, string>>(new Map());
+  const audiosRef = useRef<Map<number, Promise<string | null>>>(new Map());
 
   const olvidarAudios = useCallback((conservar: number[] = []) => {
-    for (const [i, url] of audiosRef.current) {
+    for (const [i, trabajo] of audiosRef.current) {
       if (conservar.includes(i)) continue;
-      URL.revokeObjectURL(url);
       audiosRef.current.delete(i);
+      // Puede estar todavía generándose. Se espera para liberar, en lugar de
+      // descartarlo sin más: si no, esa dirección queda ocupando memoria hasta
+      // que se cierre la pestaña.
+      trabajo.then((url) => url && URL.revokeObjectURL(url)).catch(() => {});
     }
   }, []);
 
@@ -173,27 +176,54 @@ export function useVozAlta({
     olvidarAudios();
   }, [parrafos, olvidarAudios]);
 
+  /**
+   * El audio de un párrafo, generándolo si hace falta.
+   *
+   * **Lo guardado es la promesa, no la dirección ya lista.** Esa diferencia era
+   * el motivo de que la voz leyera un párrafo y se plantara:
+   *
+   * Mientras suena un párrafo se manda a generar el siguiente. Si lo guardado
+   * fuera la dirección, al terminar el párrafo el bucle pide el siguiente, la
+   * caché todavía está vacía —la generación no terminó— y lo manda a generar
+   * **otra vez**. Dos modelos neuronales trabajando a la vez sobre el mismo
+   * texto, cada uno releyendo veinte megas: un teléfono no lo aguanta.
+   *
+   * Guardando la promesa, el segundo pedido se engancha al primero y espera.
+   */
   const generar = useCallback(
-    async (i: number): Promise<string | null> => {
-      if (!vozNaturalId) return null;
-      const guardado = audiosRef.current.get(i);
-      if (guardado) return guardado;
+    (i: number): Promise<string | null> => {
+      if (!vozNaturalId) return Promise.resolve(null);
+
+      const enCurso = audiosRef.current.get(i);
+      if (enCurso) return enCurso;
 
       const texto = parrafos[i];
-      if (!texto) return null;
+      if (!texto) return Promise.resolve(null);
 
-      const wav = await sintetizar(vozNaturalId, texto);
-      const url = URL.createObjectURL(wav);
-      audiosRef.current.set(i, url);
-      return url;
+      const trabajo = sintetizar(vozNaturalId, texto).then((wav) => URL.createObjectURL(wav));
+
+      // Si falla, se saca de la caché: dejarla ahí haría que cada intento
+      // posterior de ese párrafo devolviera el mismo error sin volver a probar.
+      trabajo.catch(() => audiosRef.current.delete(i));
+
+      audiosRef.current.set(i, trabajo);
+      return trabajo;
     },
     [parrafos, vozNaturalId]
   );
 
-  /** Reproduce una fuente y avisa si terminó de verdad o la interrumpieron. */
+  /**
+   * Reproduce una fuente y dice cómo salió.
+   *
+   * Los tres desenlaces se distinguen porque piden cosas distintas: seguir con
+   * el párrafo siguiente, callarse sin decir nada, o avisar que se rompió.
+   * Antes devolvía un sí/no, y "se rompió" quedaba mezclado con "la
+   * interrumpieron": la voz se detenía en silencio y no había forma de saber
+   * por qué.
+   */
   const reproducir = useCallback((url: string, tanda: number) => {
     const a = obtenerAudio();
-    return new Promise<boolean>((resolver) => {
+    return new Promise<"fin" | "interrumpido" | "error">((resolver) => {
       const limpiar = () => {
         a.removeEventListener("ended", alTerminar);
         a.removeEventListener("error", alFallar);
@@ -202,16 +232,16 @@ export function useVozAlta({
       // esperando — que es justo lo que se quiere: al reanudar sigue sola.
       const alTerminar = () => {
         limpiar();
-        resolver(tandaRef.current === tanda);
+        resolver(tandaRef.current === tanda ? "fin" : "interrumpido");
       };
       const alFallar = () => {
         limpiar();
-        resolver(false);
+        resolver(tandaRef.current === tanda ? "error" : "interrumpido");
       };
       a.addEventListener("ended", alTerminar);
       a.addEventListener("error", alFallar);
       a.src = url;
-      a.play().catch(() => alFallar());
+      a.play().catch(alFallar);
     });
   }, []);
 
@@ -259,8 +289,13 @@ export function useVozAlta({
         // sería mucho, a cambio de nada: nadie vuelve treinta párrafos atrás.
         olvidarAudios([i, siguiente]);
 
-        const termino = await reproducir(url, tanda);
-        if (!termino) return;
+        const salida = await reproducir(url, tanda);
+        if (salida === "interrumpido") return;
+        if (salida === "error") {
+          setErrorNatural("Se cortó la reproducción. Probá con la voz del sistema.");
+          setEstado("detenido");
+          return;
+        }
       }
 
       if (tandaRef.current !== tanda) return;
