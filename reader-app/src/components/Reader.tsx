@@ -769,6 +769,7 @@ export function Reader({ bookId, onBack }: { bookId: string; onBack: () => void 
       <BarraVoz
           vozDisponible={voz.disponible}
           estado={voz.estado}
+          preparando={voz.preparando}
           velocidad={voz.velocidad}
           velocidades={voz.velocidades}
           onLeer={() => voz.comenzar(activeIndex)}

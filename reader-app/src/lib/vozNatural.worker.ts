@@ -240,6 +240,180 @@ async function bajarVoz(
   }
 }
 
+// ── Generar el audio, reusando el modelo ────────────────────────────────────
+
+/**
+ * EL MOTOR, ARMADO UNA VEZ
+ * ========================
+ *
+ * El `predict` de la biblioteca, por cada párrafo, vuelve a hacer todo desde
+ * cero: lee los veinte megas del modelo del disco, los parsea y arma la sesión
+ * de ONNX entera. En una computadora se disimula; en un teléfono son varios
+ * segundos **por párrafo**, y se notan como un silencio largo cada vez que
+ * termina uno.
+ *
+ * Acá la sesión y la configuración se arman una sola vez por voz y se guardan.
+ * Lo único que queda por párrafo es lo que de verdad depende del texto:
+ * convertirlo a fonemas y correr el modelo.
+ *
+ * Si algo de esto falla —una versión nueva que cambie las piezas, un navegador
+ * que no coopere— se vuelve al `predict` de la biblioteca y se deja de intentar
+ * el camino rápido. Prefiero que ande lento a que no ande.
+ */
+type Motor = {
+  voz: IdVoz;
+  sesion: import("onnxruntime-web").InferenceSession;
+  config: {
+    espeak: { voice: string };
+    audio: { sample_rate: number };
+    inference: { noise_scale: number; length_scale: number; noise_w: number };
+    speaker_id_map?: Record<string, number>;
+  };
+};
+
+let motor: Motor | null = null;
+let hayCaminoRapido = true;
+
+async function leerDelDisco(nombre: string): Promise<ArrayBuffer> {
+  const manija = await (await carpeta()).getFileHandle(nombre);
+  return (await manija.getFile()).arrayBuffer();
+}
+
+async function obtenerMotor(voz: IdVoz, ONNX_BASE: string): Promise<Motor> {
+  if (motor?.voz === voz) return motor;
+
+  const ort = await import("onnxruntime-web");
+  ort.env.allowLocalModels = false;
+  ort.env.wasm.wasmPaths = ONNX_BASE;
+  // Varios hilos exigen que la página esté aislada entre orígenes, y no lo
+  // está. Pedirlos igual no rompe —ONNX se queda en uno— pero dejarlo escrito
+  // aclara que la lentitud no es por acá.
+  ort.env.wasm.numThreads = 1;
+
+  // Si había otra voz cargada, se suelta antes de armar la nueva: son veinte
+  // megas cada una y en un teléfono no sobra la memoria.
+  if (motor) {
+    try {
+      await motor.sesion.release();
+    } catch {
+      // Que no se pueda soltar no es motivo para no seguir.
+    }
+    motor = null;
+  }
+
+  const config = JSON.parse(new TextDecoder().decode(await leerDelDisco(`${voz}.onnx.json`)));
+  const sesion = await ort.InferenceSession.create(await leerDelDisco(`${voz}.onnx`));
+
+  motor = { voz, sesion, config };
+  return motor;
+}
+
+/** Texto a fonemas, con espeak-ng compilado a WebAssembly. */
+async function aFonemas(vozEspeak: string, texto: string, WASM_BASE: string): Promise<number[]> {
+  const { createPiperPhonemize } = await import("piper-phonemize");
+
+  // El resultado no vuelve como valor de retorno: el programa lo "imprime". Por
+  // eso la promesa se arma antes y sus manijas quedan a mano de los callbacks.
+  let resolver!: (ids: number[]) => void;
+  let rechazar!: (e: Error) => void;
+  const salida = new Promise<number[]>((si, no) => {
+    resolver = si;
+    rechazar = no;
+  });
+
+  const modulo = await createPiperPhonemize({
+    print: (linea) => resolver(JSON.parse(linea).phoneme_ids),
+    printErr: (linea) => rechazar(new Error(linea)),
+    locateFile: (archivo) =>
+      archivo.endsWith(".wasm")
+        ? `${WASM_BASE}.wasm`
+        : archivo.endsWith(".data")
+          ? `${WASM_BASE}.data`
+          : archivo,
+  });
+
+  modulo.callMain([
+    "-l",
+    vozEspeak,
+    "--input",
+    JSON.stringify([{ text: texto.trim() }]),
+    "--espeak_data",
+    "/espeak-ng-data",
+  ]);
+
+  return salida;
+}
+
+/** Envuelve las muestras crudas en un WAV de 16 bits, que es lo que sabe reproducir un `<audio>`. */
+function aWav(muestras: Float32Array, frecuencia: number): ArrayBuffer {
+  const CANALES = 1;
+  const BITS = 16;
+  const CABECERA = 44;
+
+  const vista = new DataView(new ArrayBuffer(muestras.length * 2 + CABECERA));
+  const texto = (posicion: number, valor: string) => {
+    for (let i = 0; i < valor.length; i++) vista.setUint8(posicion + i, valor.charCodeAt(i));
+  };
+
+  texto(0, "RIFF");
+  vista.setUint32(4, vista.buffer.byteLength - 8, true);
+  texto(8, "WAVE");
+  texto(12, "fmt ");
+  vista.setUint32(16, 16, true); // largo del bloque de formato
+  vista.setUint16(20, 1, true); // 1 = PCM sin comprimir
+  vista.setUint16(22, CANALES, true);
+  vista.setUint32(24, frecuencia, true);
+  vista.setUint32(28, (frecuencia * CANALES * BITS) / 8, true); // bytes por segundo
+  vista.setUint16(32, (CANALES * BITS) / 8, true); // bytes por muestra
+  vista.setUint16(34, BITS, true);
+  texto(36, "data");
+  vista.setUint32(40, muestras.length * 2, true);
+
+  let posicion = CABECERA;
+  for (const muestra of muestras) {
+    // Recortado a mano: el modelo puede pasarse de 1 y ahí la conversión daría
+    // la vuelta, que se escucha como un chasquido.
+    const acotada = muestra > 1 ? 1 : muestra < -1 ? -1 : muestra;
+    vista.setInt16(posicion, acotada < 0 ? acotada * 32768 : acotada * 32767, true);
+    posicion += 2;
+  }
+
+  return vista.buffer;
+}
+
+async function generarRapido(
+  voz: IdVoz,
+  texto: string,
+  ONNX_BASE: string,
+  WASM_BASE: string
+): Promise<Blob> {
+  const ort = await import("onnxruntime-web");
+  const { sesion, config } = await obtenerMotor(voz, ONNX_BASE);
+
+  const fonemas = await aFonemas(config.espeak.voice, texto, WASM_BASE);
+  const entradas: Record<string, unknown> = {
+    input: new ort.Tensor("int64", fonemas, [1, fonemas.length]),
+    input_lengths: new ort.Tensor("int64", [fonemas.length]),
+    scales: new ort.Tensor("float32", [
+      config.inference.noise_scale,
+      config.inference.length_scale,
+      config.inference.noise_w,
+    ]),
+  };
+
+  // Los modelos con varias voces adentro necesitan que se les diga cuál.
+  if (Object.keys(config.speaker_id_map ?? {}).length) {
+    entradas.sid = new ort.Tensor("int64", [0]);
+  }
+
+  const { output } = await sesion.run(
+    entradas as Parameters<typeof sesion.run>[0]
+  );
+  return new Blob([aWav(output.data as Float32Array, config.audio.sample_rate)], {
+    type: "audio/x-wav",
+  });
+}
+
 /**
  * Las generaciones van de a una, en fila.
  *
@@ -292,9 +466,21 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
         break;
 
       case "sintetizar": {
-        const wav = await enFila(() =>
-          tts.predict({ text: pedido.texto, voiceId: pedido.voz as VoiceId })
-        );
+        const wav = await enFila(async () => {
+          if (hayCaminoRapido) {
+            try {
+              return await generarRapido(pedido.voz, pedido.texto, tts.ONNX_BASE, tts.WASM_BASE);
+            } catch (err) {
+              // Una sola vez: si el camino rápido no anda en este navegador, no
+              // tiene sentido reintentarlo en cada párrafo. Se sigue con el de
+              // la biblioteca, que es lento pero seguro.
+              console.error("Voz natural: se vuelve al camino lento.", err);
+              hayCaminoRapido = false;
+              motor = null;
+            }
+          }
+          return tts.predict({ text: pedido.texto, voiceId: pedido.voz as VoiceId });
+        });
         alPrincipal({ id: pedido.id, tipo: "audio", wav });
         break;
       }
@@ -304,6 +490,9 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
         break;
 
       case "borrar":
+        // Si la voz que se borra es la que está cargada, el motor tiene que
+        // soltarla: si no, seguiría hablando con un modelo que ya no existe.
+        if (motor?.voz === pedido.voz) motor = null;
         await borrarArchivos(pedido.voz);
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;

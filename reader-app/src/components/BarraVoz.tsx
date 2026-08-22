@@ -21,6 +21,7 @@ import { PanelVozNatural } from "@/components/PanelVozNatural";
 export function BarraVoz({
   vozDisponible,
   estado,
+  preparando,
   velocidad,
   velocidades,
   onLeer,
@@ -47,6 +48,14 @@ export function BarraVoz({
    */
   vozDisponible: boolean;
   estado: EstadoVoz;
+  /**
+   * La voz natural está generando y todavía no hay nada que reproducir.
+   *
+   * Armar el modelo lleva unos segundos la primera vez. Sin este aviso, entre
+   * tocar "Escuchar" y que empiece a hablar no pasa nada en pantalla, y lo
+   * razonable es pensar que no anduvo y volver a tocar.
+   */
+  preparando: boolean;
   velocidad: number;
   velocidades: readonly number[];
   onLeer: () => void;
@@ -187,6 +196,24 @@ export function BarraVoz({
           onTemporizador={onTemporizador}
           onCerrar={() => setOpcionesAbiertas(false)}
         />
+      )}
+
+      {/*
+        Mientras la voz natural genera no hay nada que escuchar ni nada que
+        mirar. Sin este cartel el silencio parece un botón que no funcionó — y
+        lo natural es volver a tocarlo, que solo empeora las cosas.
+      */}
+      {preparando && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-24 z-20 flex justify-center px-4">
+          <div
+            className="flex items-center gap-2 rounded-full border px-4 py-2 text-sm shadow-lg backdrop-blur"
+            style={estiloMarco}
+            role="status"
+          >
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+            Preparando la voz…
+          </div>
+        </div>
       )}
 
       <div className={contenedor}>

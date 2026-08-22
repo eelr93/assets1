@@ -1,5 +1,5 @@
 import { build } from "esbuild";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -33,6 +33,33 @@ const salida = resolve(raiz, "public/voz-natural.worker.js");
 
 await mkdir(dirname(salida), { recursive: true });
 
+/**
+ * Encuentra el fonemizador de Piper adentro de `vits-web`.
+ *
+ * Es el que pasa de texto a los números que come el modelo. No lo publica
+ * ningún paquete por separado: viaja adentro de `vits-web`, en un archivo con
+ * el nombre generado por su empaquetador (`piper-DeOu3H9E.js`) y sin estar
+ * declarado en sus `exports`, así que no se puede importar por su nombre.
+ *
+ * Se busca por patrón en lugar de escribir el nombre a mano: si una versión
+ * nueva lo renombra, se sigue encontrando igual. Y si de verdad desapareciera,
+ * el build corta acá con un mensaje claro, que es mucho mejor que descubrirlo
+ * cuando alguien aprieta "Escuchar" en su teléfono.
+ */
+const distDeVitsWeb = resolve(raiz, "node_modules/@diffusionstudio/vits-web/dist");
+const archivoDelFonemizador = (await readdir(distDeVitsWeb)).find(
+  (n) => n.startsWith("piper-") && n.endsWith(".js")
+);
+
+if (!archivoDelFonemizador) {
+  throw new Error(
+    `No se encontró el fonemizador de Piper en ${distDeVitsWeb}. ` +
+      `Se buscaba un archivo "piper-*.js". Si @diffusionstudio/vits-web cambió de ` +
+      `estructura, hay que revisar cómo se obtiene createPiperPhonemize.`
+  );
+}
+console.log(`fonemizador: ${archivoDelFonemizador}`);
+
 const resultado = await build({
   entryPoints: [resolve(raiz, "src/lib/vozNatural.worker.ts")],
   outfile: salida,
@@ -51,6 +78,7 @@ const resultado = await build({
   sourcemap: false,
   legalComments: "none",
   alias: {
+    "piper-phonemize": resolve(distDeVitsWeb, archivoDelFonemizador),
     // El modelo viene compilado con Emscripten y trae adentro la variante de
     // Node, que pide `fs` y `path` detrás de una comprobación que en el
     // navegador nunca se cumple. El empaquetador no ejecuta la comprobación:

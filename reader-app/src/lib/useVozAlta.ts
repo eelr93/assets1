@@ -3,6 +3,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { habilitarAudio, obtenerAudio, sintetizar, type IdVozNatural } from "./vozNatural";
 
+/**
+ * Cuántos párrafos se mandan a generar por adelantado con la voz natural.
+ *
+ * Tres es el equilibrio: alcanza para tapar un párrafo corto o un momento en
+ * que el teléfono se pone lento, y no llena la memoria — el audio sale sin
+ * comprimir, así que cada uno pesa cerca de un mega.
+ */
+const PARRAFOS_ADELANTADOS = 3;
+
 
 /**
  * LECTURA EN VOZ ALTA
@@ -73,6 +82,16 @@ export function useVozAlta({
   const vozRef = useRef<SpeechSynthesisVoice | null>(null);
 
   /**
+   * Si está esperando que se genere el audio del párrafo que sigue.
+   *
+   * Solo aplica a la voz natural. El primer párrafo tarda: hay que armar el
+   * modelo. Sin decirlo, entre tocar "Escuchar" y que empiece a hablar hay un
+   * silencio en el que no pasa nada en pantalla, y lo razonable es pensar que
+   * no funcionó y volver a tocar.
+   */
+  const [preparando, setPreparando] = useState(false);
+
+  /**
    * Número de tanda, para distinguir un final de verdad de la sacudida que
    * deja `cancel()`.
    *
@@ -133,6 +152,7 @@ export function useVozAlta({
     a.removeAttribute("src");
     if (disponible) window.speechSynthesis.cancel();
     setEstado("detenido");
+    setPreparando(false);
   }, [disponible]);
 
   // Al salir del capítulo o cerrar el lector, la voz tiene que callarse: sigue
@@ -262,6 +282,10 @@ export function useVozAlta({
         if (tandaRef.current !== tanda) return;
         if (!parrafos[i]) continue;
 
+        // Se marca antes de cada párrafo, no solo del primero: si el teléfono se
+        // atrasa a mitad del capítulo, el silencio también hay que explicarlo.
+        setPreparando(true);
+
         let url: string | null;
         try {
           url = await generar(i);
@@ -272,6 +296,7 @@ export function useVozAlta({
             "No se pudo generar el audio con la voz natural. Probá con la voz del sistema."
           );
           setEstado("detenido");
+          setPreparando(false);
           return;
         }
         if (tandaRef.current !== tanda) return;
@@ -279,27 +304,45 @@ export function useVozAlta({
 
         setIndice(i);
         onParrafo?.(i);
+        setPreparando(false);
 
-        // El siguiente se va generando de fondo; no se espera.
-        const siguiente = parrafos.findIndex((t, k) => k > i && t.length > 0);
-        if (siguiente !== -1) generar(siguiente).catch(() => {});
+        /*
+          Se mandan a generar varios párrafos por adelantado, no uno.
 
-        // Se conservan el que suena y el que se está generando; el resto se
-        // libera. El audio sale sin comprimir y un capítulo entero en memoria
-        // sería mucho, a cambio de nada: nadie vuelve treinta párrafos atrás.
-        olvidarAudios([i, siguiente]);
+          Con uno solo alcanzaba justo cuando el teléfono generaba más rápido de
+          lo que la voz lee. Si un párrafo es corto, o el teléfono se pone
+          lento un rato, la generación no llega y aparece un silencio — y una
+          vez que se atrasa, ya no recupera.
+
+          Con varios en camino, el hilo aprovecha para adelantar trabajo
+          mientras suena un párrafo largo y absorbe los cortos. El hilo los
+          atiende de a uno, así que esto es cola, no trabajo en paralelo.
+        */
+        const enCamino: number[] = [];
+        for (let k = i + 1; k < parrafos.length && enCamino.length < PARRAFOS_ADELANTADOS; k++) {
+          if (!parrafos[k]) continue;
+          enCamino.push(k);
+          generar(k).catch(() => {});
+        }
+
+        // Se conserva el que suena y los que vienen; el resto se libera. El
+        // audio sale sin comprimir y un capítulo entero en memoria sería mucho,
+        // a cambio de nada: nadie vuelve treinta párrafos atrás.
+        olvidarAudios([i, ...enCamino]);
 
         const salida = await reproducir(url, tanda);
         if (salida === "interrumpido") return;
         if (salida === "error") {
           setErrorNatural("Se cortó la reproducción. Probá con la voz del sistema.");
           setEstado("detenido");
+          setPreparando(false);
           return;
         }
       }
 
       if (tandaRef.current !== tanda) return;
       setEstado("detenido");
+      setPreparando(false);
       onFinDelCapitulo?.();
     },
     [parrafos, generar, reproducir, olvidarAudios, onParrafo, onFinDelCapitulo]
@@ -319,6 +362,7 @@ export function useVozAlta({
         // Habilitar el audio **acá adentro**, mientras el toque todavía cuenta.
         habilitarAudio();
         setEstado("leyendo");
+        setPreparando(true);
         leerNatural(desde, vel, tanda);
         return;
       }
@@ -526,6 +570,7 @@ export function useVozAlta({
     velocidades: VELOCIDADES,
     usandoNatural,
     errorNatural,
+    preparando,
     voces,
     vozElegida,
     minutosTemporizador: MINUTOS_TEMPORIZADOR,
