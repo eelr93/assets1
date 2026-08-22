@@ -108,9 +108,44 @@ type Pendiente = {
 };
 const pendientes = new Map<number, Pendiente>();
 
+/**
+ * De dónde se carga el hilo.
+ *
+ * Es un archivo suelto en `public/`, armado por `scripts/construir-worker-voz.mjs`,
+ * y no un `new URL("./vozNatural.worker.ts", import.meta.url)`. Se hizo así
+ * porque esa forma no funcionaba: el empaquetador de Next no compilaba el hilo,
+ * lo copiaba tal cual —TypeScript crudo, con el `import` del paquete sin
+ * resolver— y encima quedaba con extensión `.ts`, así que el servidor lo
+ * mandaba como `video/mp2t` y el navegador se negaba a ejecutarlo. Ver el
+ * comentario largo en ese script.
+ */
+const RUTA_DEL_HILO = "/voz-natural.worker.js";
+
+/** Corta de raíz todo lo que esté esperando, con un motivo. */
+function fallarTodo(motivo: string) {
+  for (const [id, p] of pendientes) {
+    pendientes.delete(id);
+    p.rechazar(new Error(motivo));
+  }
+}
+
 function obtenerHilo(): Worker {
   if (hilo) return hilo;
-  hilo = new Worker(new URL("./vozNatural.worker.ts", import.meta.url), { type: "module" });
+  hilo = new Worker(RUTA_DEL_HILO, { type: "module" });
+
+  /*
+    Si el hilo no arranca, hay que enterarse.
+
+    Sin esto, un hilo que no carga deja cada promesa esperando para siempre: la
+    descarga se queda en cero, sin barra, sin error y sin nada que tocar. Fue
+    exactamente lo que pasó cuando el archivo se servía con el tipo equivocado —
+    desde afuera parecía que el botón no hacía nada.
+  */
+  hilo.onerror = () => {
+    hilo = null;
+    fallarTodo("No se pudo cargar el motor de la voz natural.");
+  };
+  hilo.onmessageerror = () => fallarTodo("El motor de la voz natural devolvió algo ilegible.");
 
   hilo.onmessage = (e: MessageEvent<RespuestaVozNatural>) => {
     const r = e.data;

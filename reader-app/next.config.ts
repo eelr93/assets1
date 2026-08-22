@@ -22,26 +22,11 @@ const soloLector = process.env.LECTOR_ESTATICO === "1";
 
 const nextConfig: NextConfig = {
   /*
-    El modelo de voz neuronal viene compilado con Emscripten, y ese código trae
-    adentro las dos variantes: la del navegador y la de Node. La de Node hace
-    `require("fs")` detrás de un `if (typeof process === "object")` que en el
-    navegador nunca se cumple — pero el empaquetador no ejecuta ese `if`, ve el
-    `require` y falla porque `fs` no existe del lado del cliente.
-
-    Apuntar `fs` y `path` a un módulo vacío deja que el empaquetado termine. La
-    rama que los usaría no corre nunca en un navegador, así que no se pierde
-    nada.
+    Acá no hay nada del motor de voz neuronal a propósito: ese paquete ya no
+    entra en el empaquetado de Next. El hilo que lo usa se arma aparte con
+    esbuild (`scripts/construir-worker-voz.mjs`) y queda como un archivo suelto
+    en `public/`. Ver ese script para el motivo.
   */
-  turbopack: {
-    resolveAlias: {
-      fs: "./src/lib/moduloVacio.ts",
-      path: "./src/lib/moduloVacio.ts",
-    },
-  },
-  webpack: (config) => {
-    config.resolve.fallback = { ...config.resolve.fallback, fs: false, path: false };
-    return config;
-  },
   ...(soloLector
     ? {
         output: "export" as const,

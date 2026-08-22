@@ -43,3 +43,6 @@ next-env.d.ts
 
 # generated at install time by scripts/copy-pdf-worker.mjs
 /public/pdf.worker.min.mjs
+
+# armado por scripts/construir-worker-voz.mjs en cada build
+/public/voz-natural.worker.js
