@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Lectura Accesible
 
-## Getting Started
+Lector de EPUB, PDF y TXT para alguien operado de cataratas en ambos ojos. Letra
+grande de a un toque, temas de alto contraste, un párrafo resaltado para no
+perder el renglón, y voz en alta para cuando los ojos se cansan.
 
-First, run the development server:
+**En línea: https://lectura-accesible.pages.dev**
+
+Los libros nunca salen del teléfono: se guardan en el propio navegador.
+
+## Empezar
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Publicar
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+# lo que está en línea: sitio estático, sin servidor ni cuentas
+npm run build:lector
+npx wrangler pages deploy out --project-name lectura-accesible --branch main --commit-dirty=true
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+# producto completo, con cuentas y quiz de IA (necesita credenciales)
+npm run build
+```
 
-## Learn More
+Los dos builds salen del mismo código: la app se adapta a lo que encuentra en su
+entorno. Sin las variables de Supabase no hay login, ni barra de sesión, ni
+botón de quiz.
 
-To learn more about Next.js, take a look at the following resources:
+## Antes de tocar el código
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**Leer [`HANDOFF.md`](./HANDOFF.md).** Está el estado real, qué se probó y qué
+no, y las trampas que ya costaron una vuelta cada una — sobre todo alrededor de
+la voz neuronal, el worker y Safari en iPhone.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+La puesta en marcha con credenciales está en [`SETUP.md`](./SETUP.md).

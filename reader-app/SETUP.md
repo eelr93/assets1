@@ -67,6 +67,12 @@ lo necesita es el quiz, y en este modo no se publica — `/api/quiz` devuelve 40
 barra de sesión, ni el botón del quiz (ver `AuthGate.tsx`). No es una versión
 recortada ni una rama aparte: es el mismo código leyendo su entorno.
 
+**Nota sobre el motor de voz neuronal:** los dos comandos de build arman primero
+`public/voz-natural.worker.js` con esbuild (`npm run build:voz`, que corre
+solo). Ese archivo no se versiona. Si el build corta ahí, leer el comentario de
+`scripts/construir-worker-voz.mjs`: explica por qué no se puede dejar que
+Turbopack empaquete ese worker.
+
 ### 6.b — App completa (con cuentas y quiz)
 
 ```bash

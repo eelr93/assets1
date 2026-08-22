@@ -1,186 +1,232 @@
 # Lectura Accesible — documento de traspaso
 
-Este documento resume todo lo construido hasta ahora para retomar el trabajo
-desde otra sesión de Claude Code (por ejemplo, en tu computadora).
-
-## Cómo continuar (importante, leer primero)
-
-El código completo **ya está en GitHub**, no hace falta reescribirlo ni
-pegarlo en ningún lado. Lo más simple es que en tu PC clones el repositorio
-y le pidas a Claude Code que siga desde ahí:
+Estado al **22 de agosto de 2026**. Este archivo es lo primero que hay que leer
+para retomar el proyecto desde otra sesión o desde otra computadora.
 
 ```
 git clone https://github.com/eelr93/assets1.git
 cd assets1
 git checkout claude/accessible-reading-app-icddv1
 cd reader-app
+npm install
 ```
 
-Abrí Claude Code en esa carpeta (`reader-app/`) y contale que continúe desde
-acá — va a encontrar este mismo archivo, el `SETUP.md` y todo el código.
-Si no tenés `git` instalado o nunca lo usaste, avisale a Claude Code y que
-te guíe paso a paso para instalarlo y clonar.
+La guía de puesta en marcha con credenciales está en `SETUP.md`.
 
-Este archivo (`HANDOFF.md`) es un resumen para dar contexto rápido; el
-código real y la documentación operativa detallada están en el repo.
+---
 
-## Qué es esta app
+## Qué es
 
-Lector de EPUB, PDF y TXT pensado originalmente para mi novia, que fue
-operada de cataratas en ambos ojos y tiene dificultad para leer. Permite
-ajustar tamaño de letra, tipografía, espaciados, fondo/tema (incluye modo
-nocturno y alto contraste) y tiene un "modo enfoque" que resalta el párrafo
-que se está leyendo y atenúa el resto.
+Lector de EPUB, PDF y TXT hecho para una persona operada de cataratas en ambos
+ojos. Todo lo que tiene sale de ahí: letra grande de a un toque, temas de alto
+contraste, un párrafo resaltado para no perder el renglón, voz en alta para
+cuando los ojos se cansan.
 
-El proyecto evolucionó a algo más grande: se va a publicar en Play Store
-(el dueño ya tiene cuenta de desarrollador paga), así que ahora es
-multiusuario con registro moderado (para controlar quién puede generar
-quizzes con IA, ya que eso consume tokens pagos).
+**Está publicado y en uso: https://lectura-accesible.pages.dev** (Cloudflare
+Pages, gratis, sin tarjeta).
 
-## Stack técnico
-
-- **Next.js 16** (App Router, TypeScript, Tailwind v4), en `reader-app/`.
-- **Lectura**: parsers propios de EPUB (JSZip + DOMParser), PDF (pdfjs-dist)
-  y TXT, todos normalizados a un modelo común de capítulos/párrafos.
-  HTML extraído sanitizado con DOMPurify antes de renderizarlo.
-- **Almacenamiento de libros**: 100% local por dispositivo, vía IndexedDB
-  (`idb-keyval`). Los libros de cada usuario nunca salen de su teléfono.
-- **Cuentas**: Supabase (auth + Postgres). Todo registro nuevo queda en
-  estado `pending` hasta que un administrador lo aprueba desde un panel
-  dentro de la misma app.
-- **Quiz de comprensión**: ruta de servidor `/api/quiz` que verifica la
-  sesión de Supabase y que el usuario esté aprobado, y recién ahí llama a
-  la API de Anthropic (modelo Haiku por defecto, por costo) para generar
-  3-4 preguntas de opción múltiple basadas en el texto del capítulo.
-- **PWA**: manifest + service worker propios (sin `next-pwa`, porque no es
-  compatible con Next 16) para que sea instalable en Android desde Chrome.
-- Pensado para empaquetarse en Play Store más adelante con **Bubblewrap**
-  (PWA → Android App Bundle), una vez que esté desplegada en un dominio real.
-
-## Decisiones importantes a recordar
-
-- **pdfjs-dist está fijado en la versión 4.9.155**, no subir a la 6.x: las
-  versiones más nuevas usan `Map.prototype.getOrInsertComputed`, una API muy
-  reciente que todavía no soportan navegadores/WebViews comunes.
-- El worker de pdf.js (`public/pdf.worker.min.mjs`) **no se versiona en git**:
-  se copia automáticamente desde `node_modules` al hacer `npm install`, vía
-  el script `postinstall` (`scripts/copy-pdf-worker.mjs`).
-- Next 16 renombró `middleware.js` a `proxy.js` — no se usa ninguno de los
-  dos en este proyecto: la protección de rutas se hace toda del lado
-  cliente (`AuthGate`) más la verificación de sesión dentro de la propia
-  ruta `/api/quiz` (que es el único endpoint sensible).
-- Cada tienda de IndexedDB necesita su **propia base de datos** en
-  `idb-keyval` (`createStore`); si comparten nombre de base, solo se crea el
-  primer store. Por eso `src/lib/db.ts` usa tres bases separadas.
-- La aprobación de administrador usa una función `security definer`
-  (`is_admin()`) en la base para evitar recursión infinita en las políticas
-  RLS de Supabase — ver `supabase/migration.sql`.
-
-## Ya está publicada, en modo solo lector (20/8/2026)
-
-**https://lectura-accesible.pages.dev** — Cloudflare Pages, gratis, sin tarjeta.
-
-Es el lector completo: abrir EPUB/PDF/TXT, tamaño de letra, tipografía,
-espaciados, temas (incluido alto contraste y nocturno), modo enfoque y progreso
-por libro. Se instala desde Chrome como app y anda sin internet.
-
-**Sin cuentas y sin quiz**, porque la API de Anthropic se paga aparte de la
-suscripción de claude.ai y todavía no hay saldo cargado. Eso no obligó a
-recortar nada: la app **se adapta a lo que encuentra en su entorno**. Sin las
-variables de Supabase no hay login, ni barra de sesión, ni botón de quiz; con
-ellas, vuelve a ser el producto completo. Un solo código, dos comandos:
+Se publica en **modo solo lector**: sin cuentas y sin el quiz de IA, porque la
+API de Anthropic se paga aparte de la suscripción de claude.ai. Eso no obligó a
+recortar código — la app se adapta a lo que encuentra en su entorno:
 
 ```bash
 npm run build:lector   # sitio estático → Cloudflare Pages (lo que está online)
-npm run build          # app completa → Vercel (cuando haya claves y saldo)
+npm run build          # app completa con cuentas y quiz → Vercel
 ```
 
-Detalle de los dos caminos en `SETUP.md`, sección 6.
+Desplegar lo que está online:
 
-**Lo que nadie verificó todavía:** la app no se abrió en un navegador. Está
-comprobado que el servidor entrega los archivos correctos, no que un EPUB abra
-bien ni que los ajustes resulten cómodos para quien fue operado de cataratas —
-que es justamente para quien se hizo. Esa prueba sigue pendiente.
+```bash
+npm run build:lector
+npx wrangler pages deploy out --project-name lectura-accesible --branch main --commit-dirty=true
+```
 
-## Estado actual de la puesta en marcha (Supabase)
+---
 
-- Proyecto de Supabase creado: `https://etsakkscgjolgtetxzxm.supabase.co`.
-- `supabase/migration.sql` se está corriendo desde el SQL Editor del panel
-  de Supabase (paso en curso al momento de escribir esto — confirmar que
-  haya dado "Success" antes de seguir).
+## Qué hay hecho
 
-### Pendiente para dejarla 100% funcional
+**Lectura**
 
-1. Confirmar que la migración SQL corrió sin errores.
-2. Copiar la `anon public key` desde *Project Settings > API* en Supabase.
-3. Conseguir una API key en console.anthropic.com (cuenta distinta a
-   claude.ai) y cargarle saldo.
-4. Crear `reader-app/.env.local` a partir de `.env.local.example` con esos
-   tres valores (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
-   `ANTHROPIC_API_KEY`).
-5. Correr `npm install && npm run dev`, registrarse desde la app con el
-   propio correo, y promoverse a administrador con:
-   ```sql
-   update public.profiles set is_admin = true, status = 'approved'
-   where email = 'tu-email@ejemplo.com';
-   ```
-6. Desplegar en un hosting real (Vercel recomendado) con esas mismas
-   variables de entorno cargadas ahí también.
-7. Empaquetar con Bubblewrap para subir a Play Store (guía resumida en
-   `SETUP.md`, sección 7).
+- EPUB, PDF y TXT, normalizados a un modelo común de capítulos y párrafos.
+- Tamaño de letra, tipografía, interlineado, espaciado de letras y palabras,
+  ancho de columna, alineación. Cinco temas, incluidos nocturno y alto
+  contraste. A− / A+ en el encabezado, a un toque, sin abrir ajustes.
+- **Modo enfoque**: se toca el párrafo que se quiere leer y ese queda resaltado;
+  el resto se atenúa. El toque es la interacción central — antes lo elegía la
+  posición de la pantalla y había que dejar el texto a la altura exacta.
+- **Bajar solo**: desplazamiento automático a velocidad regulable (− y + al
+  lado del botón). La velocidad va en **renglones por minuto**, no en píxeles,
+  porque el tamaño de letra cambia todo el tiempo. Sigue al capítulo siguiente
+  al llegar al fondo.
+- Índice, marcadores y búsqueda en un mismo panel. Lo buscado queda **marcado en
+  azul** dentro del texto, distinto del ámbar del párrafo que se lee.
+- Progreso por libro, "Seguir leyendo" en la biblioteca, pantalla que no se
+  apaga, instalable en iPhone y Android.
 
-El detalle paso a paso de todo esto ya está escrito en `reader-app/SETUP.md`.
+**Voz**
 
-## Estructura del código
+- Voz del sistema (`speechSynthesis`), con velocidad, elección de voz, botón
+  **Probar** y temporizador para dormirse. Sigue sola al capítulo siguiente.
+- Tocar un párrafo mientras lee **manda la voz a ese punto**.
+- Voces neuronales (Piper/VITS) descargables, que corren en el teléfono sin
+  servidor. **Están detrás de una advertencia, ver más abajo.**
+
+---
+
+## Lo que hay que saber antes de tocar nada
+
+### La voz neuronal en el teléfono no sirve, y por qué se dejó igual
+
+Medido en el iPhone de la usuaria: **20 a 30 segundos por párrafo**. No es un
+problema de ajuste, está a un orden de magnitud de ser usable. Se dejó porque en
+computadora anda bien y suena mejor que cualquier voz del sistema, pero pasó a
+ser una sección cerrada, detrás de un botón que dice ese número.
+
+**El camino que sí sirve en un iPhone son las voces «premium» del sistema**
+(Ajustes → Accesibilidad → Contenido hablado → Voces → Español). Son neuronales
+igual, pero las genera el chip del teléfono, así que salen al instante. La app
+ya las usa y el aviso está destacado arriba de todo en el panel de voz.
+
+Antes de intentar acelerar esto de nuevo, saber que ya se hizo:
+
+- La sesión de ONNX y la configuración se arman **una vez por voz**, no por
+  párrafo (era lo más caro con diferencia: releer y reparsear 20 MB cada vez).
+- Se generan **tres párrafos por adelantado**, encolados de a uno.
+- Lo que queda por hacer sería multihilo en WASM, que exige aislamiento entre
+  orígenes (`COOP`/`COEP`). Daría quizá 2–4×, sigue sin alcanzar, y `COEP:
+  require-corp` puede romper la carga de los modelos y de las fuentes. No se
+  intentó por eso.
+
+### Errores de `@diffusionstudio/vits-web` que ya están sorteados
+
+De esa biblioteca se usa **solo el fonemizador y `predict` como respaldo**.
+Bajar, guardar, listar y borrar están escritos en `vozNatural.worker.ts` porque
+los suyos no funcionan en iPhone y fallan **sin decir nada**:
+
+- Su `download` no espera a que termine la escritura (descarta la promesa), así
+  que avisa "listo" cuando todavía no guardó nada.
+- Guarda con `createWritable()`, **que Safari no tiene hasta iOS 17**, adentro de
+  un `try/catch` que solo hace `console.error`. En un iPhone eso era: bajar
+  60 MB, no guardar nada, y que no se entere nadie. La vía que sí anda es
+  `createSyncAccessHandle()`, que **solo existe dentro de un worker**.
+- Su catálogo no trae la voz argentina ni la mexicana liviana. `PATH_MAP` está
+  exportado y es un objeto común, así que se le agregan a mano; como la URL base
+  apunta a un espejo incompleto y es constante, la ruta de esas dos sube cuatro
+  niveles con `..` y baja al repositorio original de Piper. Se apoya en la
+  normalización de URLs (RFC 3986), no en una casualidad, y está verificado
+  contra el servidor.
+
+### El worker de voz se arma aparte, con esbuild
+
+`scripts/construir-worker-voz.mjs` → `public/voz-natural.worker.js`.
+
+**No usar `new Worker(new URL("./x.worker.ts", import.meta.url))`.** Turbopack no
+lo compila: lo copia tal cual, TypeScript crudo y con los imports sin resolver.
+Encima queda con extensión `.ts` y Cloudflare lo sirve como `video/mp2t`, con lo
+cual el navegador se niega a ejecutarlo. Los dos fallos juntos daban un botón
+que no hacía absolutamente nada.
+
+El script busca el fonemizador por patrón (`dist/piper-*.js`) en lugar de
+escribir el nombre generado a mano, y **corta el build con un mensaje claro** si
+no lo encuentra.
+
+### Otras cosas que ya costaron una vuelta
+
+- `speechSynthesis.cancel()` dispara `onend` **en otro turno del bucle de
+  eventos**. Un booleano "estoy cancelando" que se apaga en el renglón siguiente
+  llega tarde y la cancelación se lee como "terminó el capítulo": la voz saltaba
+  de capítulo sola. Se resuelve con un número de tanda por locución.
+- El audio de la voz neuronal usa **un único `<audio>` de módulo**. Safari solo
+  deja sonar el que arrancó dentro de un toque, y ese permiso queda pegado a ese
+  elemento; como generar el primer párrafo tarda, hay que habilitarlo con un WAV
+  mudo en el mismo toque, antes de ponerse a generar.
+- La caché de audio guarda **la promesa**, no el resultado. Guardando el
+  resultado, el bucle pedía el mismo párrafo dos veces —una como anticipo y otra
+  al llegar— y largaba dos modelos a la vez sobre el mismo texto.
+- `scrollTop` redondea. Sumarle fracciones de píxel no mueve nada: la posición
+  se lleva aparte con decimales. Y hay que comprobar cuál es el elemento que de
+  verdad scrollea, porque escribirle a uno que no scrollea no falla ni avisa.
+- `pdfjs-dist` está fijado en **4.9.155**. Las 6.x usan
+  `Map.prototype.getOrInsertComputed`, que muchos navegadores todavía no tienen.
+- Cada tienda de `idb-keyval` necesita **su propia base**. Si comparten nombre,
+  solo se crea la primera.
+- Cloudflare Pages no publica archivos de más de **25 MiB**.
+
+---
+
+## Lo que nadie verificó
+
+Esto importa tanto como lo anterior. **Todo el desarrollo se hizo sin poder
+abrir un navegador.** Lo verificado es que el servidor entrega los archivos
+correctos y que el código compila, no que se vea ni suene bien.
+
+Confirmado por la usuaria probando en su teléfono:
+
+- El resaltado se ve. El "bajar solo" funciona. La voz avanza de párrafo.
+- La voz neuronal tarda 20–30 s por párrafo.
+
+Sin confirmar:
+
+- Si las voces «premium» de iOS suenan bien (es lo primero que habría que
+  probar; resolvería el pedido original sin nada de la voz neuronal).
+- Cómo se ve en pantallas distintas de la suya.
+- Si algún EPUB o PDF real abre mal.
+
+---
+
+## Pendiente
+
+**En el teléfono, cinco minutos:** bajar una voz «premium» de iOS y probarla
+desde el panel de voz. Si suena bien, el tema de la voz está cerrado.
+
+**Si se quiere el producto completo** (cuentas + quiz de IA), está todo escrito y
+compila; falta cargar credenciales y probar el flujo de punta a punta. Pasos en
+`SETUP.md`.
+
+**Ideas ofrecidas y no hechas:** notas sobre los marcadores, pellizcar para
+agrandar la letra, resaltado palabra por palabra mientras habla (usa
+`onboundary`, que en Safari de iPhone históricamente no se dispara).
+
+**No es posible**, aunque parezca: controlar la lectura desde la pantalla
+bloqueada del iPhone. Safari suspende la voz al bloquear. La única salida sería
+audio generado en un servidor, que cuesta dinero.
+
+---
+
+## Estructura
 
 ```
 reader-app/
+  scripts/
+    construir-worker-voz.mjs   # arma public/voz-natural.worker.js (esbuild)
+    copy-pdf-worker.mjs        # copia el worker de pdf.js (postinstall)
+    generar-iconos.mjs
   src/
     app/
-      layout.tsx        # fuentes, AuthProvider/SettingsProvider, manifest
-      page.tsx           # renderiza <AppShell/>
-      manifest.ts         # manifest de PWA
-      api/quiz/route.ts    # genera el quiz (server-side, verifica sesión)
+      layout.tsx               # fuentes, providers, ícono de iPhone
+      globals.css              # temas de lectura, resaltado, hallazgos
+      api/quiz/route.ts        # quiz (solo en el build completo)
     components/
-      AppShell.tsx         # switch biblioteca/lector/admin + barra superior
-      AuthGate.tsx          # decide: login / pendiente / app según sesión
-      AuthForm.tsx           # formulario de login y registro
-      PendingApproval.tsx     # pantalla de "cuenta pendiente"
-      AdminPanel.tsx           # aprobar/rechazar usuarios
-      Library.tsx               # biblioteca: subir/listar/borrar libros
-      BookCard.tsx
-      Reader.tsx                 # lector: temas, tipografía, modo enfoque,
-                                  #   progreso, navegación de capítulos
-      SettingsPanel.tsx            # panel de ajustes de lectura
-      Quiz.tsx                      # quiz al final de cada capítulo
-      ServiceWorkerRegister.tsx
+      AppShell.tsx             # biblioteca / lector / admin
+      AuthGate.tsx             # deja pasar si no hay cuentas configuradas
+      Library.tsx, BookCard.tsx
+      Reader.tsx               # el lector: resaltado, foco, búsqueda marcada
+      BarraVoz.tsx             # controles de voz y de "bajar solo"
+      PanelVozNatural.tsx      # descarga y elección de voces neuronales
+      PanelIndice.tsx          # capítulos / marcadores / búsqueda
+      SettingsPanel.tsx, AvisoInstalar.tsx, Quiz.tsx
     context/
-      AuthContext.tsx      # sesión + perfil de Supabase
-      SettingsContext.tsx   # ajustes de lectura (persistidos en localStorage)
+      SettingsContext.tsx      # ajustes de lectura (localStorage)
+      AuthContext.tsx
     lib/
-      types.ts               # tipos compartidos
-      db.ts                    # IndexedDB (libros, archivos, progreso)
-      sanitize.ts                # DOMPurify
-      text.ts                     # HTML de párrafos -> texto plano (para el quiz)
-      parsers/                     # epub.ts, pdf.ts, txt.ts, index.ts
-      supabase/
-        client.ts                   # cliente de navegador
-        server.ts                    # cliente de servidor (Route Handlers)
-  supabase/migration.sql   # esquema + políticas RLS (correr una vez)
-  public/sw.js               # service worker
-  SETUP.md                    # guía paso a paso de puesta en marcha
-  .env.local.example           # variables de entorno necesarias
+      useVozAlta.ts            # voz del sistema + motor de la voz neuronal
+      vozNatural.ts            # cliente del worker, audio único de módulo
+      vozNatural.worker.ts     # descarga, guardado y generación
+      useDesplazamientoAuto.ts # "bajar solo"
+      usePantallaEncendida.ts
+      text.ts                  # texto plano, texto para voz, marcarTermino
+      db.ts, types.ts, sanitize.ts, parsers/
+  public/
+    voz-natural.worker.js      # generado en cada build, no versionado
+    pdf.worker.min.mjs         # generado al instalar, no versionado
 ```
-
-## Qué falta construir (funcionalidad)
-
-- Nada crítico del lado del código para el MVP + cuentas + quiz: está todo
-  implementado, compilado y probado en el navegador (sin credenciales reales
-  de Supabase/Anthropic, porque esta sesión no tenía acceso a ellas).
-- Falta **probar el flujo real de punta a punta** una vez cargadas las
-  credenciales: registro, confirmación de correo, aprobación desde el panel
-  de admin, y generación de un quiz real.
-- Íconos de la PWA son un SVG simple generado a mano — se podría mejorar el
-  diseño visual del ícono antes de publicar en Play Store.
-- Sin tests automatizados todavía (se verificó todo manualmente con
-  Playwright durante el desarrollo).
