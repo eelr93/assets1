@@ -373,11 +373,6 @@ function OpcionesVoz({
           </div>
         </section>
 
-        <PanelVozNatural elegida={vozNatural} onElegir={onVozNatural} />
-
-        {/* La voz del sistema queda debajo de la natural pero no se esconde:
-            es la que anda seguro en cualquier teléfono, y sigue siendo a la que
-            hay que poder volver si la otra se entrecorta. */}
         {voces.length > 0 && (
           <section className="flex flex-col gap-2">
             <label htmlFor="voz-lectura" className="text-sm font-medium text-[var(--foreground)]/70">
@@ -411,14 +406,35 @@ function OpcionesVoz({
                 </button>
               )}
             </div>
-            <p className="text-xs leading-relaxed text-[var(--foreground)]/55">
-              Las voces las pone el teléfono, no la app. En iPhone se bajan mejores desde
-              Ajustes → Accesibilidad → Contenido hablado → Voces → Español; ahí aparecen las
-              versiones «mejorada» o «premium», que suenan bastante más naturales. Después
-              volvé acá y elegila.
+            {/*
+              Este aviso es el camino que de verdad conviene en un teléfono, así
+              que va acá arriba y no escondido.
+
+              Las versiones «premium» de iOS son neuronales igual que los
+              modelos que se pueden bajar en la app, con una diferencia decisiva:
+              las genera el chip del teléfono, así que salen al instante en
+              lugar de tardar medio minuto por párrafo.
+            */}
+            <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs leading-relaxed text-[var(--foreground)]/70">
+              <strong>Para que suene más natural, sin esperas:</strong> en iPhone se bajan voces
+              mejores desde Ajustes → Accesibilidad → Contenido hablado → Voces → Español. Elegí
+              una que diga «mejorada» o «premium» y tocá el ícono de descarga. Después volvé acá,
+              elegila en la lista de arriba y tocá <strong>Probar</strong>.
             </p>
           </section>
         )}
+
+        {/*
+          Las neuronales van después de la del sistema, y no antes.
+
+          Estaban primero, cuando parecían la respuesta a "quiero una voz que
+          suene natural". Medidas en un iPhone son veinte a treinta segundos por
+          párrafo, así que la respuesta real para un teléfono es la de arriba:
+          una voz «premium» del sistema, que también es neuronal pero la genera
+          el propio aparato. Éstas quedan como lo que son, una opción avanzada
+          que rinde en computadora.
+        */}
+        <PanelVozNatural elegida={vozNatural} onElegir={onVozNatural} />
 
         <section className="flex flex-col gap-2">
           <h3 className="text-sm font-medium text-[var(--foreground)]/70">

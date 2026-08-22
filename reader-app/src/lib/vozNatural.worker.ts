@@ -47,7 +47,6 @@ type IdVoz = string;
 
 export type PedidoVozNatural =
   | { id: number; tipo: "descargar"; voz: IdVoz }
-  | { id: number; tipo: "instalarIncluida"; voz: IdVoz }
   | { id: number; tipo: "sintetizar"; voz: IdVoz; texto: string }
   | { id: number; tipo: "guardadas" }
   | { id: number; tipo: "borrar"; voz: IdVoz };
@@ -454,14 +453,6 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
     switch (pedido.tipo) {
       case "descargar":
         await bajarVoz(tts.HF_BASE, tts.PATH_MAP[pedido.voz as VoiceId], pedido.voz, avisar);
-        alPrincipal({ id: pedido.id, tipo: "listo" });
-        break;
-
-      // La voz incluida viaja con la app, así que sale de nuestro propio
-      // servidor: sin permisos de otro dominio de por medio, más cerca y más
-      // rápida. Lo que se guarda queda igual que el de cualquier otra.
-      case "instalarIncluida":
-        await bajarVoz(`${self.location.origin}/voces`, `${pedido.voz}.onnx`, pedido.voz, avisar);
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;
 

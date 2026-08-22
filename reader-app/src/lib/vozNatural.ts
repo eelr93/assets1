@@ -239,21 +239,6 @@ export function vozNaturalSoportada(): boolean {
   );
 }
 
-/**
- * La voz que viaja con la app.
- *
- * Es la más liviana del catálogo (20 MiB) y se instala sola la primera vez que
- * se abren las opciones de voz, desde nuestro propio servidor. La idea es que
- * haya una voz natural andando sin que haya que decidir ni esperar nada: las
- * otras son mejores, pero hay que ir a buscarlas.
- *
- * Es la única que entra: Cloudflare Pages no publica archivos de más de 25 MiB.
- */
-export const VOZ_INCLUIDA: IdVozNatural = "es_MX-ald-x_low";
-
-export const instalarVozIncluida = (onAvance?: (cargado: number, total: number) => void) =>
-  pedir<void>({ tipo: "instalarIncluida", voz: VOZ_INCLUIDA }, onAvance);
-
 export const descargarVoz = (voz: IdVozNatural, onAvance?: (cargado: number, total: number) => void) =>
   pedir<void>({ tipo: "descargar", voz }, onAvance);
 

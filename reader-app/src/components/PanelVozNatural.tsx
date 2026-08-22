@@ -5,10 +5,8 @@ import {
   borrarVoz,
   descargarVoz,
   idsDescargados,
-  instalarVozIncluida,
   REGIONES_VOZ,
   VOCES_NATURALES,
-  VOZ_INCLUIDA,
   vozNaturalSoportada,
   type IdVozNatural,
 } from "@/lib/vozNatural";
@@ -44,17 +42,8 @@ export function PanelVozNatural({
    */
   const [bajando, setBajando] = useState<{ id: IdVozNatural; cargado: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [abierta, setAbierta] = useState(false);
 
-  /**
-   * Al abrir, instala sola la voz incluida si todavía no está.
-   *
-   * Viaja con la app, así que sale de nuestro propio servidor: no hay que
-   * elegir nada ni esperar a Hugging Face. La idea es que haya una voz natural
-   * andando de entrada; las otras son mejores, pero hay que ir a buscarlas.
-   *
-   * Si falla, no se muestra el error como si alguien lo hubiera pedido: nadie
-   * pidió esto. Queda como una voz más para descargar a mano.
-   */
   useEffect(() => {
     // Durante el prerender no hay navegador que consultar, así que esto no se
     // puede saber en el primer render sin romper la hidratación.
@@ -63,26 +52,9 @@ export function PanelVozNatural({
     if (!vozNaturalSoportada()) return;
 
     let vivo = true;
-    (async () => {
-      let ids = await idsDescargados();
-      if (!vivo) return;
-      setDescargadas(ids);
-
-      if (ids.includes(VOZ_INCLUIDA)) return;
-      setBajando({ id: VOZ_INCLUIDA, cargado: 0, total: 0 });
-      try {
-        await instalarVozIncluida((cargado, total) => {
-          if (vivo) setBajando({ id: VOZ_INCLUIDA, cargado, total });
-        });
-        ids = await idsDescargados();
-        if (vivo) setDescargadas(ids);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        if (vivo) setBajando(null);
-      }
-    })();
-
+    idsDescargados().then((ids) => {
+      if (vivo) setDescargadas(ids);
+    });
     return () => {
       vivo = false;
     };
@@ -132,13 +104,56 @@ export function PanelVozNatural({
     }
   };
 
+  /*
+    La sección arranca cerrada y con la advertencia adelante.
+
+    Medido en un iPhone: veinte a treinta segundos de espera **por párrafo**.
+    Eso no es una voz para escuchar un libro, es una pantalla que parece
+    colgada. Dejarla suelta y a la vista, con un botón grande de "Descargar
+    114 MB", es tenderle una trampa a quien abra el panel buscando una voz
+    linda.
+
+    No se saca del todo porque en una computadora anda bien y suena mejor que
+    cualquier voz del sistema. Pero pasa a ser lo que es: una opción avanzada,
+    detrás de una advertencia que dice el número.
+  */
+  if (!abierta) {
+    return (
+      <section className="flex flex-col gap-2">
+        <button
+          onClick={() => setAbierta(true)}
+          className="min-h-11 rounded-xl border border-[var(--border)] px-3 text-left text-sm transition hover:bg-[var(--surface-muted)]"
+        >
+          <span className="font-medium">Voces neuronales (avanzado)</span>
+          <span className="mt-0.5 block text-xs leading-relaxed text-[var(--foreground)]/55">
+            Suenan mejor, pero en teléfono tardan 20 a 30 segundos por párrafo. Andan bien en
+            computadora.
+          </span>
+        </button>
+      </section>
+    );
+  }
+
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-[var(--foreground)]/70">Voz natural</h3>
-      <p className="text-xs leading-relaxed text-[var(--foreground)]/55">
-        Voces que suenan bastante más humanas que las del sistema. Se bajan una vez y después
-        funcionan sin internet. Le dan más trabajo al teléfono: si se entrecorta, volvé a la voz
-        del sistema.
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-sm font-medium text-[var(--foreground)]/70">Voces neuronales</h3>
+        <button
+          onClick={() => setAbierta(false)}
+          className="shrink-0 text-xs text-[var(--foreground)]/55 underline"
+        >
+          Ocultar
+        </button>
+      </div>
+      <p className="rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs leading-relaxed text-[var(--foreground)]/70">
+        <strong>En teléfono van lentas.</strong> El modelo se ejecuta acá adentro, y un iPhone
+        tarda entre 20 y 30 segundos en generar cada párrafo: se escucha un silencio largo cada
+        vez. En computadora andan bien.
+        <br />
+        <br />
+        Para escuchar en el teléfono conviene la voz del sistema de acá arriba, sobre todo si
+        bajaste una versión «premium» desde los ajustes del iPhone: las genera el propio teléfono
+        y salen al instante.
       </p>
 
       {/*

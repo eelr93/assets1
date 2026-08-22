@@ -9,7 +9,7 @@
     "build:lector": "npm run build:voz && cross-env LECTOR_ESTATICO=1 next build",
     "start": "next start",
     "lint": "eslint",
-    "build:voz": "node scripts/construir-worker-voz.mjs && node scripts/traer-voz-incluida.mjs"
+    "build:voz": "node scripts/construir-worker-voz.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.117.1",
