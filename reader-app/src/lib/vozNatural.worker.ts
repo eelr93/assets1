@@ -15,8 +15,23 @@
  * pausar, ni salir. En un lector eso es inaceptable, y encima el congelamiento
  * caería justo cuando la voz está por seguir.
  *
- * Acá el modelo trabaja aparte y la pestaña sigue respondiendo. El precio es
- * que todo va por mensajes, de ahí el ida y vuelta con `id` de cada pedido.
+ * Hay un segundo motivo, que apareció después: **guardar los modelos solo se
+ * puede desde un hilo**. Ver `guardarArchivo`.
+ *
+ * ── De la biblioteca se usa una sola cosa ───────────────────────────────────
+ *
+ * Solo `predict`, que es la que genera el audio. Bajar, guardar, listar y
+ * borrar están escritos acá, porque los de la biblioteca no funcionan en
+ * iPhone y fallan sin decir nada:
+ *
+ * - Su `download` no espera a que termine la escritura (descarta la promesa),
+ *   así que avisa "listo" cuando todavía no guardó nada.
+ * - Y guarda con `createWritable()`, que Safari no tiene hasta iOS 17, dentro
+ *   de un `try/catch` que solo hace `console.error`. En un iPhone eso es:
+ *   descarga 60 MB, no guarda nada, y no se entera nadie.
+ *
+ * Los nombres de archivo que se usan acá son los mismos que espera `predict`
+ * cuando busca en su caché, así que sigue encontrando todo.
  */
 
 import type { VoiceId } from "@diffusionstudio/vits-web";
@@ -32,6 +47,7 @@ type IdVoz = string;
 
 export type PedidoVozNatural =
   | { id: number; tipo: "descargar"; voz: IdVoz }
+  | { id: number; tipo: "instalarIncluida"; voz: IdVoz }
   | { id: number; tipo: "sintetizar"; voz: IdVoz; texto: string }
   | { id: number; tipo: "guardadas" }
   | { id: number; tipo: "borrar"; voz: IdVoz };
@@ -54,18 +70,16 @@ const alPrincipal = (m: RespuestaVozNatural) => self.postMessage(m);
  *
  * ── El truco de los `..`, y por qué es legítimo ─────────────────────────────
  *
- * La biblioteca arma la dirección como `${BASE}/${ruta}`, y `BASE` apunta al
- * espejo y no se puede cambiar: es una constante importada. Pero la ruta sí se
- * puede, porque `PATH_MAP` está exportado y es un objeto común.
+ * La dirección se arma como `${BASE}/${ruta}`, y `BASE` apunta al espejo: es
+ * una constante importada y no se puede cambiar. La ruta sí, así que la de
+ * estas dos sube cuatro niveles y baja al repositorio original.
  *
- * Entonces la ruta sube cuatro niveles y baja al repositorio original. No es un
- * parche sucio sobre una casualidad: quitar los `..` es parte de cómo se
- * normaliza cualquier dirección web (RFC 3986), lo hace el propio navegador
- * antes de pedir nada, y el resultado está verificado contra el servidor.
+ * Quitar los `..` es parte de cómo se normaliza cualquier dirección web
+ * (RFC 3986), lo hace el propio navegador antes de pedir nada, y el resultado
+ * está verificado contra el servidor.
  *
- * Lo demás sigue funcionando solo: la biblioteca guarda y busca los archivos
- * por su nombre suelto, que no cambia, y para saber si una voz está bajada mira
- * este mismo mapa.
+ * Sigue haciendo falta aunque el bajar y el guardar ahora sean nuestros: la
+ * biblioteca usa este mismo mapa para encontrar el modelo al generar.
  */
 const AL_REPOSITORIO_ORIGINAL = "../../../../rhasspy/piper-voices/resolve/main";
 
@@ -74,57 +88,180 @@ const VOCES_AGREGADAS: Record<string, string> = {
   "es_MX-ald-x_low": `${AL_REPOSITORIO_ORIGINAL}/es/es_MX/ald/x_low/es_MX-ald-x_low.onnx`,
 };
 
+// ── Guardado en el disco del navegador ──────────────────────────────────────
+
+type CarpetaOPFS = FileSystemDirectoryHandle & {
+  keys: () => AsyncIterableIterator<string>;
+};
+
+/** Manija de escritura sincrónica: la única vía que ofrece Safari, y solo en un hilo. */
+type ManijaSincronica = {
+  truncate: (n: number) => void;
+  write: (datos: Uint8Array, opciones?: { at: number }) => number;
+  flush: () => void;
+  close: () => void;
+};
+
+async function carpeta(): Promise<CarpetaOPFS> {
+  const raiz = await navigator.storage.getDirectory();
+  // "piper" es el nombre que usa la biblioteca para buscar; tiene que coincidir.
+  return (await raiz.getDirectoryHandle("piper", { create: true })) as CarpetaOPFS;
+}
+
 /**
- * Espera a que la voz esté realmente escrita en el disco.
+ * Escribe un archivo, por la vía que el navegador ofrezca.
  *
- * Hace falta por un error de la biblioteca. Su `download` es, en esencia:
+ * **Este es el arreglo que hacía falta.** La biblioteca usa solo
+ * `createWritable()`, que Safari en iPhone no tiene hasta iOS 17. Como además
+ * se traga el error, el resultado era una descarga completa que no guardaba
+ * nada y no avisaba: la voz nunca aparecía en la lista.
  *
- *     await Promise.all(archivos.map(async (u) => {
- *       guardar(u, await bajar(u));   // ← `guardar` es async y no lleva await
- *     }));
+ * `createSyncAccessHandle()` sí está en Safari desde hace rato, pero **solo
+ * funciona dentro de un hilo**, que es una de las razones por las que todo esto
+ * vive acá.
  *
- * La promesa de la escritura se descarta, así que `download` termina cuando
- * terminó de **bajar**, no cuando terminó de **guardar**. Con 63 o 114 MB, entre
- * una cosa y la otra pasa un rato largo.
- *
- * El síntoma era que la descarga llegaba al 100 %, y al preguntar enseguida qué
- * voces había guardadas todavía no figuraba ninguna: la voz recién bajada no
- * aparecía para elegir. Al reabrir el panel más tarde sí estaba, porque para
- * entonces la escritura había terminado.
- *
- * Se pregunta hasta que aparezca, con un tope: si en un minuto no está, algo
- * falló de verdad y es mejor decirlo que dejar la espera colgada.
+ * Se prueba primero la sincrónica justamente porque es la que cubre el caso
+ * difícil; donde existen las dos, las dos sirven.
  */
-async function esperarAQueEsteGuardada(
-  tts: typeof import("@diffusionstudio/vits-web"),
-  voz: IdVoz
-) {
-  const limite = Date.now() + 60_000;
-  while (Date.now() < limite) {
-    // `stored()` se declara devolviendo solo las voces del catálogo propio,
-    // pero devuelve lo que haya en el disco, incluidas las agregadas a mano.
-    const guardadas: string[] = await tts.stored();
-    if (guardadas.includes(voz)) return;
-    await new Promise((r) => setTimeout(r, 400));
+async function guardarArchivo(nombre: string, datos: ArrayBuffer) {
+  // Las dos vías se declaran opcionales porque justamente lo son: cuál existe
+  // depende del navegador, y ese es todo el punto de esta función.
+  const manija = (await (await carpeta()).getFileHandle(nombre, { create: true })) as
+    FileSystemFileHandle & {
+      createSyncAccessHandle?: () => Promise<ManijaSincronica>;
+      createWritable?: () => Promise<FileSystemWritableFileStream>;
+    };
+
+  if (typeof manija.createSyncAccessHandle === "function") {
+    const escritura = await manija.createSyncAccessHandle();
+    try {
+      escritura.truncate(0);
+      escritura.write(new Uint8Array(datos), { at: 0 });
+      escritura.flush();
+    } finally {
+      escritura.close();
+    }
+    return;
   }
-  throw new Error("La voz se descargó pero no se pudo guardar en el teléfono.");
+
+  if (typeof manija.createWritable === "function") {
+    const escritura = await manija.createWritable();
+    await escritura.write(datos);
+    await escritura.close();
+    return;
+  }
+
+  throw new Error("Este navegador no deja guardar archivos grandes.");
+}
+
+/**
+ * Las voces guardadas de verdad.
+ *
+ * Una voz cuenta solo si están **los dos** archivos: el modelo y su
+ * configuración. Con uno solo, generar falla más tarde y de forma confusa; es
+ * preferible que aparezca como no descargada y se pueda volver a bajar.
+ */
+async function listarGuardadas(): Promise<string[]> {
+  const dir = await carpeta();
+  const nombres = new Set<string>();
+  for await (const nombre of dir.keys()) nombres.add(nombre);
+
+  return [...nombres]
+    .filter((n) => n.endsWith(".onnx"))
+    .map((n) => n.slice(0, -".onnx".length))
+    .filter((id) => nombres.has(`${id}.onnx.json`));
+}
+
+async function borrarArchivos(voz: IdVoz) {
+  const dir = await carpeta();
+  for (const nombre of [`${voz}.onnx`, `${voz}.onnx.json`]) {
+    try {
+      await dir.removeEntry(nombre);
+    } catch {
+      // Que no esté no es un problema: el resultado buscado es el mismo.
+    }
+  }
+}
+
+// ── Descarga ────────────────────────────────────────────────────────────────
+
+/** Baja un archivo informando el avance. Falla fuerte si el servidor no lo da. */
+async function bajar(url: string, onAvance?: (cargado: number, total: number) => void) {
+  const respuesta = await fetch(url);
+  if (!respuesta.ok) {
+    throw new Error(`El servidor respondió ${respuesta.status} al pedir ${url.split("/").at(-1)}`);
+  }
+  if (!respuesta.body) return respuesta.arrayBuffer();
+
+  const total = Number(respuesta.headers.get("Content-Length") ?? 0);
+  const lector = respuesta.body.getReader();
+  const trozos: Uint8Array[] = [];
+  let cargado = 0;
+
+  for (;;) {
+    const { done, value } = await lector.read();
+    if (done) break;
+    trozos.push(value);
+    cargado += value.length;
+    onAvance?.(cargado, total);
+  }
+
+  const entero = new Uint8Array(cargado);
+  let posicion = 0;
+  for (const t of trozos) {
+    entero.set(t, posicion);
+    posicion += t.length;
+  }
+  return entero.buffer;
+}
+
+/**
+ * Baja los dos archivos de una voz y los guarda.
+ *
+ * La configuración va primero aunque pese unos pocos kilobytes: si algo está
+ * mal —la ruta, el permiso del navegador para guardar— se falla en un segundo
+ * en lugar de después de cien megas.
+ */
+async function bajarVoz(
+  base: string,
+  ruta: string,
+  voz: IdVoz,
+  avisar: (cargado: number, total: number) => void
+) {
+  const url = `${base}/${ruta}`;
+  await guardarArchivo(`${voz}.onnx.json`, await bajar(`${url}.json`));
+  await guardarArchivo(`${voz}.onnx`, await bajar(url, avisar));
+
+  // Se comprueba en lugar de darlo por hecho: guardar puede fallar en silencio
+  // si el teléfono se quedó sin lugar, y eso hay que decirlo ahora y no cuando
+  // se intente leer un libro.
+  if (!(await listarGuardadas()).includes(voz)) {
+    throw new Error("Se descargó pero no quedó guardada. Puede faltar espacio en el teléfono.");
+  }
 }
 
 self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
   const pedido = e.data;
+  const avisar = (cargado: number, total: number) =>
+    alPrincipal({ id: pedido.id, tipo: "avance", cargado, total });
+
   try {
     // La biblioteca arrastra el runtime de ONNX, que son varios megas. Se carga
-    // recién acá, la primera vez que hace falta: quien no use la voz natural no
-    // paga nada por que exista.
+    // recién acá, la primera vez que hace falta.
     const tts = await import("@diffusionstudio/vits-web");
     Object.assign(tts.PATH_MAP, VOCES_AGREGADAS);
 
     switch (pedido.tipo) {
       case "descargar":
-        await tts.download(pedido.voz as VoiceId, (p) =>
-          alPrincipal({ id: pedido.id, tipo: "avance", cargado: p.loaded, total: p.total })
-        );
-        await esperarAQueEsteGuardada(tts, pedido.voz);
+        await bajarVoz(tts.HF_BASE, tts.PATH_MAP[pedido.voz as VoiceId], pedido.voz, avisar);
+        alPrincipal({ id: pedido.id, tipo: "listo" });
+        break;
+
+      // La voz incluida viaja con la app, así que sale de nuestro propio
+      // servidor: sin permisos de otro dominio de por medio, más cerca y más
+      // rápida. Lo que se guarda queda igual que el de cualquier otra.
+      case "instalarIncluida":
+        await bajarVoz(`${self.location.origin}/voces`, `${pedido.voz}.onnx`, pedido.voz, avisar);
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;
 
@@ -134,14 +271,12 @@ self.onmessage = async (e: MessageEvent<PedidoVozNatural>) => {
         break;
       }
 
-      case "guardadas": {
-        const voces = await tts.stored();
-        alPrincipal({ id: pedido.id, tipo: "guardadas", voces });
+      case "guardadas":
+        alPrincipal({ id: pedido.id, tipo: "guardadas", voces: await listarGuardadas() });
         break;
-      }
 
       case "borrar":
-        await tts.remove(pedido.voz as VoiceId);
+        await borrarArchivos(pedido.voz);
         alPrincipal({ id: pedido.id, tipo: "listo" });
         break;
     }

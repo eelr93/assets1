@@ -46,3 +46,5 @@ next-env.d.ts
 
 # armado por scripts/construir-worker-voz.mjs en cada build
 /public/voz-natural.worker.js
+# 20 MiB de modelo, bajados por scripts/traer-voz-incluida.mjs en cada build
+/public/voces/

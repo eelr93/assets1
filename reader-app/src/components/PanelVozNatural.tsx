@@ -5,8 +5,10 @@ import {
   borrarVoz,
   descargarVoz,
   idsDescargados,
+  instalarVozIncluida,
   REGIONES_VOZ,
   VOCES_NATURALES,
+  VOZ_INCLUIDA,
   vozNaturalSoportada,
   type IdVozNatural,
 } from "@/lib/vozNatural";
@@ -32,19 +34,55 @@ export function PanelVozNatural({
 }) {
   const [soportada, setSoportada] = useState(true);
   const [descargadas, setDescargadas] = useState<IdVozNatural[]>([]);
-  const [bajando, setBajando] = useState<{ id: IdVozNatural; porcentaje: number } | null>(null);
+  /**
+   * Qué se está bajando y cuánto va.
+   *
+   * Se guardan los bytes y no un porcentaje ya calculado porque el total puede
+   * no venir: algunos servidores no mandan el tamaño. Con los bytes crudos se
+   * puede mostrar los megas que van, que es honesto; con un porcentaje sacado
+   * de un total en cero, la barra se queda clavada en 0 % y parece rota.
+   */
+  const [bajando, setBajando] = useState<{ id: IdVozNatural; cargado: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * Al abrir, instala sola la voz incluida si todavía no está.
+   *
+   * Viaja con la app, así que sale de nuestro propio servidor: no hay que
+   * elegir nada ni esperar a Hugging Face. La idea es que haya una voz natural
+   * andando de entrada; las otras son mejores, pero hay que ir a buscarlas.
+   *
+   * Si falla, no se muestra el error como si alguien lo hubiera pedido: nadie
+   * pidió esto. Queda como una voz más para descargar a mano.
+   */
   useEffect(() => {
     // Durante el prerender no hay navegador que consultar, así que esto no se
     // puede saber en el primer render sin romper la hidratación.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setSoportada(vozNaturalSoportada());
     if (!vozNaturalSoportada()) return;
+
     let vivo = true;
-    idsDescargados().then((ids) => {
-      if (vivo) setDescargadas(ids);
-    });
+    (async () => {
+      let ids = await idsDescargados();
+      if (!vivo) return;
+      setDescargadas(ids);
+
+      if (ids.includes(VOZ_INCLUIDA)) return;
+      setBajando({ id: VOZ_INCLUIDA, cargado: 0, total: 0 });
+      try {
+        await instalarVozIncluida((cargado, total) => {
+          if (vivo) setBajando({ id: VOZ_INCLUIDA, cargado, total });
+        });
+        ids = await idsDescargados();
+        if (vivo) setDescargadas(ids);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        if (vivo) setBajando(null);
+      }
+    })();
+
     return () => {
       vivo = false;
     };
@@ -64,18 +102,20 @@ export function PanelVozNatural({
 
   const bajar = async (id: IdVozNatural) => {
     setError(null);
-    setBajando({ id, porcentaje: 0 });
+    setBajando({ id, cargado: 0, total: 0 });
     try {
       await descargarVoz(id, (cargado, total) => {
-        // `total` llega en 0 cuando el servidor no manda el tamaño; ahí se deja
-        // la barra quieta en vez de mostrar un porcentaje inventado.
-        if (total > 0) setBajando({ id, porcentaje: Math.round((cargado * 100) / total) });
+        setBajando({ id, cargado, total });
       });
       setDescargadas(await idsDescargados());
       onElegir(id);
     } catch (err) {
       console.error(err);
-      setError("No se pudo descargar la voz. Fijate que haya internet y volvé a probar.");
+      // Se muestra el motivo real y no un texto genérico. El genérico decía
+      // "fijate que haya internet" para cualquier falla, incluso cuando el
+      // problema era otro: así no hay forma de saber si falta espacio, si el
+      // navegador no deja guardar o si de verdad no hay señal.
+      setError(err instanceof Error ? err.message : "No se pudo descargar la voz.");
     } finally {
       setBajando(null);
     }
@@ -88,7 +128,7 @@ export function PanelVozNatural({
       setDescargadas(await idsDescargados());
     } catch (err) {
       console.error(err);
-      setError("No se pudo borrar la voz.");
+      setError(err instanceof Error ? err.message : "No se pudo borrar la voz.");
     }
   };
 
@@ -142,22 +182,7 @@ export function PanelVozNatural({
                   </span>
 
                   {bajandoEsta ? (
-                    <div className="flex flex-col gap-1">
-                      <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
-                        <div
-                          className="h-full rounded-full bg-[var(--accent)] transition-[width]"
-                          style={{ width: `${bajando.porcentaje}%` }}
-                        />
-                      </div>
-                      {/* Guardar 60 o 100 MB en el teléfono lleva su rato
-                          después de que la barra llegó al final. Decirlo evita
-                          que parezca que se colgó justo al terminar. */}
-                      <span className="text-xs text-[var(--foreground)]/55">
-                        {bajando.porcentaje >= 100
-                          ? "Guardando en el teléfono… puede tardar un momento"
-                          : `Descargando… ${bajando.porcentaje}% de ${v.megas} MB`}
-                      </span>
-                    </div>
+                    <Avance cargado={bajando.cargado} total={bajando.total} />
                   ) : (
                     // Los botones se envuelven: "Dejar de usarla" y "Borrar" no
                     // entran juntos en una columna de teléfono angosto, y
@@ -202,5 +227,44 @@ export function PanelVozNatural({
 
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
     </section>
+  );
+}
+
+/**
+ * Cuánto va de la descarga.
+ *
+ * Tres estados, y los tres importan porque las esperas son largas:
+ *
+ * - **Con total conocido**, barra y porcentaje.
+ * - **Sin total** —hay servidores que no mandan el tamaño—, los megas que van.
+ *   Un porcentaje calculado sobre un total en cero se queda clavado en 0 % y
+ *   parece que se rompió.
+ * - **Terminada la bajada**, "guardando": escribir 60 o 100 MB lleva su rato
+ *   después de que la barra llegó al final, y sin este aviso parece que se
+ *   colgó justo al terminar.
+ */
+function Avance({ cargado, total }: { cargado: number; total: number }) {
+  const megas = (n: number) => (n / 1048576).toFixed(0);
+  const porcentaje = total > 0 ? Math.round((cargado * 100) / total) : null;
+  const guardando = porcentaje !== null && porcentaje >= 100;
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="h-2 overflow-hidden rounded-full bg-[var(--surface-muted)]">
+        <div
+          className={`h-full rounded-full bg-[var(--accent)] ${
+            porcentaje === null ? "animate-pulse" : "transition-[width]"
+          }`}
+          style={{ width: porcentaje === null ? "100%" : `${porcentaje}%` }}
+        />
+      </div>
+      <span className="text-xs text-[var(--foreground)]/55">
+        {guardando
+          ? "Guardando en el teléfono… puede tardar un momento"
+          : porcentaje === null
+            ? `Descargando… ${megas(cargado)} MB`
+            : `Descargando… ${porcentaje}% de ${megas(total)} MB`}
+      </span>
+    </div>
   );
 }
